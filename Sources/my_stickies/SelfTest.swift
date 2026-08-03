@@ -16,6 +16,7 @@ enum SelfTest {
         editing()
         visibility()
         strayInput()
+        trashRoundTrip()
 
         if failures.isEmpty {
             print("ok — \(checks) checks passed")
@@ -166,6 +167,70 @@ enum SelfTest {
         expect(!items[0].checked, "parent open before delete")
         items.removeSubtree(at: 2)
         expect(items[0].checked, "parent rechecks after its last open child is deleted")
+    }
+
+    // MARK: Trash
+
+    /// Exercises delete → restore → purge against real files in a temp directory.
+    private static func trashRoundTrip() {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("my-stickies-selftest-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        setenv("MY_STICKIES_NOTES", dir.appendingPathComponent("notes.json").path, 1)
+
+        let store = Store()
+        expect(store.trash.isEmpty, "a fresh store starts with an empty trash")
+        expect(FileManager.default.fileExists(atPath: Store.trashURL.path),
+               "trash_notes.json is created up front")
+        expect(Store.trashURL.lastPathComponent, "trash_notes.json", "trash file name")
+        expect(Store.trashURL.deletingLastPathComponent() == Store.fileURL.deletingLastPathComponent(),
+               "trash file sits beside notes.json")
+
+        let id = store.addNote()
+        store.update(id) { $0.title = "Doomed"; $0.colorIndex = 4; $0.paperOpacity = 0.4 }
+        let activeCount = store.notes.count
+
+        store.moveToTrash(id)
+        expect(!store.notes.contains { $0.id == id }, "a trashed note leaves the active list")
+        expect(store.notes.count, activeCount - 1, "only that note left the active list")
+        expect(store.trash.first?.id == id, "the trashed note is first in the trash")
+        expect(store.trash.first?.deletedAt != nil, "the trashed note records when it was deleted")
+        store.saveNow()
+
+        // Reload from disk to prove the trash is really persisted, not just in memory.
+        let reloaded = Store()
+        expect(reloaded.trash.count, 1, "the trash survives a reload")
+        expect(reloaded.trash.first?.title == "Doomed", "a trashed note keeps its title")
+        expect(reloaded.trash.first?.colorIndex == 4, "a trashed note keeps its color")
+        expect(reloaded.trash.first?.paperOpacity == 0.4, "a trashed note keeps its transparency")
+        expect(!reloaded.notes.contains { $0.id == id }, "a trashed note doesn't reload as active")
+
+        expect(reloaded.restoreFromTrash(id) == id, "restoring returns the note id")
+        expect(reloaded.trash.isEmpty, "restoring takes it out of the trash")
+        let back = reloaded.notes.first { $0.id == id }
+        expect(back != nil, "a restored note is active again")
+        expect(back?.isHidden == false, "a restored note opens a window")
+        expect(back?.deletedAt == nil, "a restored note clears its deletion date")
+        expect(back?.paperOpacity == 0.4, "a restored note keeps its appearance")
+
+        reloaded.moveToTrash(id)
+        reloaded.purgeFromTrash(id)
+        expect(reloaded.trash.isEmpty, "purging removes the note for good")
+        expect(reloaded.restoreFromTrash(id) == nil, "a purged note can't be restored")
+
+        let first = reloaded.addNote()
+        let second = reloaded.addNote()
+        reloaded.moveToTrash(first)
+        reloaded.moveToTrash(second)
+        expect(reloaded.trash.count, 2, "two notes in the trash")
+        expect(reloaded.trash.first?.id == second, "the most recently deleted is listed first")
+        reloaded.emptyTrash()
+        expect(reloaded.trash.isEmpty, "emptying the trash clears everything")
+        reloaded.saveNow()
+
+        let afterEmpty = Store()
+        expect(afterEmpty.trash.isEmpty, "an emptied trash stays empty across a reload")
     }
 
     // MARK: Focus handoff

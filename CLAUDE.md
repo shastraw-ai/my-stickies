@@ -25,6 +25,14 @@ product, binary, and bundle are all `my-stickies`; don't reintroduce a second na
   `onStrayInput` is the backstop; don't remove it.
 - Appearance (color/font/size/opacity) must stay reachable from all three of: header
   popover, right-click menu, Format menu. Users don't find a single entry point.
+- Deleting a note moves it to `trash_notes.json` and is never confirmed; only
+  permanent deletion (purge, empty trash) confirms. Don't add an alert to
+  `moveToTrash`.
+- New `Note` fields must be Optional or the synthesized decoder throws on existing
+  files. Non-optional-with-default does NOT decode a missing key.
+
+## Files
+- `notes.json` — active notes; `trash_notes.json` — deleted, beside it always.
 
 ## Env vars
 - `MY_STICKIES_NOTES` — alternate notes.json path

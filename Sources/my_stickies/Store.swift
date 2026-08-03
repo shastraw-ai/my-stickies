@@ -3,7 +3,12 @@ import Combine
 
 final class Store: ObservableObject {
     @Published var notes: [Note] = [] {
-        didSet { scheduleSave() }
+        didSet { notesDirty = true; scheduleSave() }
+    }
+
+    /// Deleted notes, newest first. Recoverable until purged.
+    @Published var trash: [Note] = [] {
+        didSet { trashDirty = true; scheduleSave() }
     }
 
     /// Bundle display name, so the app and its storage folder never drift apart.
@@ -34,8 +39,14 @@ final class Store: ObservableObject {
         return base.appendingPathComponent("notes.json")
     }()
 
+    /// Sits beside notes.json so a whole set stays together when copied or synced.
+    static let trashURL: URL =
+        fileURL.deletingLastPathComponent().appendingPathComponent("trash_notes.json")
+
     private var pendingSave: DispatchWorkItem?
     private var loading = false
+    private var notesDirty = false
+    private var trashDirty = false
 
     init() {
         load()
@@ -45,25 +56,38 @@ final class Store: ObservableObject {
 
     private func load() {
         loading = true
-        defer { loading = false }
 
-        guard let data = try? Data(contentsOf: Store.fileURL) else {
+        let hadNotesFile = FileManager.default.fileExists(atPath: Store.fileURL.path)
+        notes = Store.read(Store.fileURL) ?? []
+        trash = Store.read(Store.trashURL) ?? []
+
+        loading = false
+        notesDirty = !hadNotesFile
+        trashDirty = !FileManager.default.fileExists(atPath: Store.trashURL.path)
+
+        // Only seed a welcome note on a genuinely fresh install. An empty notes.json
+        // means the user trashed everything, and that should be respected.
+        if !hadNotesFile, notes.isEmpty, trash.isEmpty {
             notes = [Store.welcomeNote()]
-            loading = false
-            saveNow()
-            return
         }
+        if notesDirty || trashDirty { saveNow() }
+    }
+
+    private static func read(_ url: URL) -> [Note]? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
         do {
-            notes = try JSONDecoder().decode([Note].self, from: data)
+            return try decoder.decode([Note].self, from: data)
         } catch {
             // Don't clobber a file we failed to parse — move it aside first.
-            let backup = Store.fileURL.deletingPathExtension()
+            let backup = url.deletingPathExtension()
                 .appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970)).json")
-            try? FileManager.default.moveItem(at: Store.fileURL, to: backup)
-            NSLog("my-stickies: could not read notes.json (\(error)); backed up to \(backup.lastPathComponent)")
-            notes = [Store.welcomeNote()]
+            try? FileManager.default.moveItem(at: url, to: backup)
+            NSLog("my-stickies: could not read \(url.lastPathComponent) (\(error)); "
+                  + "backed up to \(backup.lastPathComponent)")
+            return nil
         }
-        if notes.isEmpty { notes = [Store.welcomeNote()] }
     }
 
     private func scheduleSave() {
@@ -77,13 +101,21 @@ final class Store: ObservableObject {
     func saveNow() {
         pendingSave?.cancel()
         pendingSave = nil
+        if notesDirty, Store.write(notes, to: Store.fileURL) { notesDirty = false }
+        if trashDirty, Store.write(trash, to: Store.trashURL) { trashDirty = false }
+    }
+
+    @discardableResult
+    private static func write(_ notes: [Note], to url: URL) -> Bool {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
         do {
-            let data = try encoder.encode(notes)
-            try data.write(to: Store.fileURL, options: .atomic)
+            try encoder.encode(notes).write(to: url, options: .atomic)
+            return true
         } catch {
-            NSLog("my-stickies: save failed — \(error)")
+            NSLog("my-stickies: saving \(url.lastPathComponent) failed — \(error)")
+            return false
         }
     }
 
@@ -109,8 +141,35 @@ final class Store: ObservableObject {
         return note.id
     }
 
-    func delete(_ id: UUID) {
-        notes.removeAll { $0.id == id }
+    // MARK: Trash
+
+    /// Deleting is recoverable: the note moves to trash_notes.json until purged.
+    func moveToTrash(_ id: UUID) {
+        guard let i = index(of: id) else { return }
+        var note = notes.remove(at: i)
+        note.deletedAt = Date()
+        note.isHidden = false      // so restoring puts a window back on screen
+        trash.insert(note, at: 0)  // newest first
+    }
+
+    /// Returns the restored note's id so the caller can bring its window forward.
+    @discardableResult
+    func restoreFromTrash(_ id: UUID) -> UUID? {
+        guard let i = trash.firstIndex(where: { $0.id == id }) else { return nil }
+        var note = trash.remove(at: i)
+        note.deletedAt = nil
+        note.isHidden = false
+        notes.append(note)
+        return note.id
+    }
+
+    func purgeFromTrash(_ id: UUID) {
+        trash.removeAll { $0.id == id }
+    }
+
+    func emptyTrash() {
+        guard !trash.isEmpty else { return }
+        trash.removeAll()
     }
 
     // MARK: Placement

@@ -38,7 +38,7 @@ struct NoteView: View {
             headerButton("plus", help: "Add item") { appendItem() }
             headerButton("paintpalette", help: "Color, font & transparency") { showingSettings = true }
                 .popover(isPresented: $showingSettings, arrowEdge: .bottom) { settings }
-            headerButton("trash", help: "Delete note") { confirmDeleteNote() }
+            headerButton("trash", help: "Move note to Trash") { moveToTrash() }
         }
         .padding(.leading, 34)   // clears the close button
         .padding(.trailing, 8)
@@ -200,7 +200,7 @@ struct NoteView: View {
         }
         Button("Color, Font & Transparency…") { showingSettings = true }
         Divider()
-        Button("Delete Note…") { confirmDeleteNote() }
+        Button("Move Note to Trash") { moveToTrash() }
     }
 
     private func labeledSlider(_ label: String, value: Binding<Double>,
@@ -299,22 +299,9 @@ struct NoteView: View {
         focusedItem = items[visible[target]].id
     }
 
-    private func confirmDeleteNote() {
-        let hasContent = note.items.contains { !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
-        guard hasContent else {
-            store.delete(noteID)
-            return
-        }
-        let alert = NSAlert()
-        alert.messageText = "Delete “\(note.menuTitle)”?"
-        alert.informativeText = "This note and all of its items will be removed."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
-        alert.buttons.first?.hasDestructiveAction = true
-        if alert.runModal() == .alertFirstButtonReturn {
-            store.delete(noteID)
-        }
+    /// No confirmation: the note lands in Notes ▸ Trash and can be put back from there.
+    private func moveToTrash() {
+        store.moveToTrash(noteID)
     }
 }
 

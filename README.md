@@ -55,20 +55,35 @@ them, whichever you find first:
 Transparency runs from 100% down to 20%. It applies to the paper only — the text stays
 fully opaque so a see-through note is still readable.
 
-Closing a note's window hides it rather than deleting it — everything is still in the
-Notes menu, and `⌘0` brings them all back. Clicking the Dock icon does the same.
+## Reopening and deleting notes
+
+Closing a note's window (`⌘W` or the red button) puts it away without deleting it.
+**Notes ▸ Open Note** lists every note — a checkmark means it's already on screen, and
+clicking any of them brings it back where you left it. `⌘0` or clicking the Dock icon
+reopens everything at once.
+
+The trash button in a note's header moves it to **Notes ▸ Trash**. That isn't
+destructive and doesn't ask for confirmation, because it's reversible: each trashed note
+has **Put Back**, which restores it with its colour, transparency, font, position, and
+every checkbox intact.
+
+Permanent deletion is separate and does ask: **Delete Permanently…** on a single note, or
+**Empty Trash…** for everything. Neither can be undone.
 
 ## Where your notes live
 
 ```
-~/Library/Application Support/my-stickies/notes.json
+~/Library/Application Support/my-stickies/notes.json        active notes
+~/Library/Application Support/my-stickies/trash_notes.json  deleted notes
 ```
 
-Plain JSON, saved half a second after you stop typing and again on quit.
-*File → Reveal notes.json in Finder* jumps straight to it.
+Both are plain JSON arrays — one entry per note, holding its title, items, colour,
+transparency, font, and window frame. Saved half a second after you stop typing and
+again on quit. *File → Reveal notes.json in Finder* jumps straight to them.
 
 Set `MY_STICKIES_NOTES=/path/to/other.json` to point the app at a different file — useful
-for a separate work/personal set, or for keeping notes in a synced folder.
+for a separate work/personal set, or for keeping notes in a synced folder. The trash file
+is always written beside it, so a set stays together when you copy or sync it.
 
 If the file is ever unreadable, it's renamed to `notes.corrupt-<timestamp>.json` rather
 than overwritten, and the app starts fresh.

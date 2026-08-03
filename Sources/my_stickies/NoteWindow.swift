@@ -76,8 +76,26 @@ final class WindowManager: NSObject, NSWindowDelegate {
         }
     }
 
+    /// A frame saved on a monitor that's since been unplugged would put the note
+    /// somewhere invisible — restoring it would look like nothing happened.
+    static func onScreenFrame(_ frame: CGRect) -> CGRect {
+        let visible = NSScreen.screens.map(\.visibleFrame)
+        let showsEnough = visible.contains { screen in
+            let overlap = screen.intersection(frame)
+            return overlap.width >= 80 && overlap.height >= 40
+        }
+        if showsEnough { return frame }
+
+        guard let fallback = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame else { return frame }
+        let size = CGSize(width: min(frame.width, fallback.width),
+                          height: min(frame.height, fallback.height))
+        return CGRect(x: fallback.midX - size.width / 2,
+                      y: fallback.midY - size.height / 2,
+                      width: size.width, height: size.height)
+    }
+
     private func makePanel(for note: Note) -> NotePanel {
-        let panel = NotePanel(noteID: note.id, frame: note.frame)
+        let panel = NotePanel(noteID: note.id, frame: WindowManager.onScreenFrame(note.frame))
         panel.title = note.menuTitle
         panel.level = note.alwaysOnTop ? .floating : .normal
         panel.delegate = self

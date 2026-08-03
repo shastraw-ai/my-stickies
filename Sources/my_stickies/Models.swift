@@ -115,6 +115,8 @@ struct Note: Codable, Identifiable {
     var paperOpacity: Double = 0.95
     var alwaysOnTop: Bool = true
     var isHidden: Bool = false
+    /// Set only while the note sits in the trash. Optional so older files still decode.
+    var deletedAt: Date?
 
     static let opacityPresets: [Double] = [1.0, 0.9, 0.75, 0.6, 0.45, 0.3, 0.2]
 
