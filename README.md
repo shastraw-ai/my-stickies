@@ -53,7 +53,7 @@ Notes menu, and `⌘0` brings them all back. Clicking the Dock icon does the sam
 Plain JSON, saved half a second after you stop typing and again on quit.
 *File → Reveal notes.json in Finder* jumps straight to it.
 
-Set `STICKIES_NOTES=/path/to/other.json` to point the app at a different file — useful
+Set `MY_STICKIES_NOTES=/path/to/other.json` to point the app at a different file — useful
 for a separate work/personal set, or for keeping notes in a synced folder.
 
 If the file is ever unreadable, it's renamed to `notes.corrupt-<timestamp>.json` rather
@@ -63,18 +63,15 @@ than overwritten, and the app starts fresh.
 
 ```sh
 swift build -c release
-./.build/release/Stickies --self-test    # outline logic checks
-./tools/make-icon.sh                     # regenerate Resources/AppIcon.icns
+./.build/release/my-stickies --self-test    # outline logic checks
+./tools/make-icon.sh                        # regenerate Resources/AppIcon.icns
 ```
 
-The app bundle is `my-stickies.app`, but the SwiftPM product and Swift module are
-called `Stickies` — hyphens aren't valid in module names. `build.sh` bridges the two.
-
 `swift test` is unavailable here: XCTest ships with Xcode, not the Command Line Tools.
-The equivalent assertions live in `Sources/Stickies/SelfTest.swift` and run through the
-`--self-test` flag instead.
+The equivalent assertions live in `Sources/my_stickies/SelfTest.swift` and run through
+the `--self-test` flag instead.
 
-`STICKIES_SNAPSHOT=/some/dir` dumps a PNG of each note window 1.5s after launch, for
+`MY_STICKIES_SNAPSHOT=/some/dir` dumps a PNG of each note window 1.5s after launch, for
 checking rendering without screen-recording permission.
 
 ### Layout

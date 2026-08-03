@@ -11,10 +11,10 @@ final class Store: ObservableObject {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "my-stickies"
 
     /// Defaults to ~/Library/Application Support/<appName>/notes.json.
-    /// STICKIES_NOTES points the app at a different file (separate note sets, testing).
+    /// MY_STICKIES_NOTES points the app at a different file (separate note sets, testing).
     static let fileURL: URL = {
         let fm = FileManager.default
-        if let override = ProcessInfo.processInfo.environment["STICKIES_NOTES"], !override.isEmpty {
+        if let override = ProcessInfo.processInfo.environment["MY_STICKIES_NOTES"], !override.isEmpty {
             let url = URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
             try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             return url
@@ -22,7 +22,7 @@ final class Store: ObservableObject {
         let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         let base = support.appendingPathComponent(appName, isDirectory: true)
 
-        // Carry notes over from a previous name of the app rather than starting empty.
+        // The app used to be called "Stickies"; adopt that folder instead of starting empty.
         if !fm.fileExists(atPath: base.path) {
             let legacy = support.appendingPathComponent("Stickies", isDirectory: true)
             if fm.fileExists(atPath: legacy.path) {
@@ -60,7 +60,7 @@ final class Store: ObservableObject {
             let backup = Store.fileURL.deletingPathExtension()
                 .appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970)).json")
             try? FileManager.default.moveItem(at: Store.fileURL, to: backup)
-            NSLog("Stickies: could not read notes.json (\(error)); backed up to \(backup.lastPathComponent)")
+            NSLog("my-stickies: could not read notes.json (\(error)); backed up to \(backup.lastPathComponent)")
             notes = [Store.welcomeNote()]
         }
         if notes.isEmpty { notes = [Store.welcomeNote()] }
@@ -83,7 +83,7 @@ final class Store: ObservableObject {
             let data = try encoder.encode(notes)
             try data.write(to: Store.fileURL, options: .atomic)
         } catch {
-            NSLog("Stickies: save failed — \(error)")
+            NSLog("my-stickies: save failed — \(error)")
         }
     }
 

@@ -4,11 +4,12 @@ macOS-only sticky notes with nested checkboxes. Swift + AppKit/SwiftUI, no deps.
 
 ## Commands
 - `./build.sh [--install]` — build `build/my-stickies.app`, optionally to /Applications
-- `./.build/release/Stickies --self-test` — outline logic assertions
+- `./.build/release/my-stickies --self-test` — outline logic assertions
 - `./tools/make-icon.sh` — regenerate `Resources/AppIcon.icns`
 
-The app bundle is `my-stickies.app`; the SwiftPM product and Swift module stay
-`Stickies` (hyphens aren't valid in module names). `build.sh` maps one to the other.
+Everything is named `my-stickies`. The one exception is the SwiftPM *target*
+(`my_stickies`, in `Package.swift`) — Swift module names can't contain hyphens. The
+product, binary, and bundle are all `my-stickies`; don't reintroduce a second name.
 
 ## Rules
 - No `swift test`: XCTest needs Xcode, this machine has Command Line Tools only.
@@ -20,5 +21,5 @@ The app bundle is `my-stickies.app`; the SwiftPM product and Swift module stay
 - Mac-only by design. Don't add cross-platform abstractions.
 
 ## Env vars
-- `STICKIES_NOTES` — alternate notes.json path
-- `STICKIES_SNAPSHOT` — dump each window to PNG 1.5s after launch (dev aid)
+- `MY_STICKIES_NOTES` — alternate notes.json path
+- `MY_STICKIES_SNAPSHOT` — dump each window to PNG 1.5s after launch (dev aid)

@@ -10,8 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         buildMenu()
         NSApp.activate(ignoringOtherApps: true)
 
-        // Dev aid: STICKIES_SNAPSHOT=/path/to/dir dumps each note window to a PNG.
-        if let dir = ProcessInfo.processInfo.environment["STICKIES_SNAPSHOT"] {
+        // Dev aid: MY_STICKIES_SNAPSHOT=/path/to/dir dumps each note window to a PNG.
+        if let dir = ProcessInfo.processInfo.environment["MY_STICKIES_SNAPSHOT"] {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { Self.snapshotWindows(into: dir) }
         }
     }

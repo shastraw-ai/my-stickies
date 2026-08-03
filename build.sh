@@ -4,8 +4,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-APP_NAME="my-stickies"      # bundle + executable name
-PRODUCT="Stickies"          # SwiftPM product name (the Swift module)
+APP_NAME="my-stickies"
 BUNDLE_ID="com.shastraw.my-stickies"
 VERSION="1.0"
 OUT="build/${APP_NAME}.app"
@@ -16,7 +15,7 @@ swift build -c release
 echo "==> Assembling ${OUT}"
 rm -rf "$OUT"
 mkdir -p "$OUT/Contents/MacOS" "$OUT/Contents/Resources"
-cp ".build/release/${PRODUCT}" "$OUT/Contents/MacOS/${APP_NAME}"
+cp ".build/release/${APP_NAME}" "$OUT/Contents/MacOS/${APP_NAME}"
 
 if [ -f "Resources/AppIcon.icns" ]; then
   cp "Resources/AppIcon.icns" "$OUT/Contents/Resources/AppIcon.icns"

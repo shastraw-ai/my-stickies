@@ -1,6 +1,6 @@
 import Foundation
 
-/// Assertions for the outline logic, run with `Stickies --self-test`.
+/// Assertions for the outline logic, run with `my-stickies --self-test`.
 ///
 /// XCTest isn't part of the Command Line Tools, so `swift test` can't run on a machine
 /// without Xcode. Folding the checks into the binary keeps them runnable everywhere.
