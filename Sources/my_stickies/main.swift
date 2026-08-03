@@ -4,6 +4,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let store = Store()
     private var windows: WindowManager!
     private var notesMenu: NSMenu!
+    private var formatMenu: NSMenu!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         windows = WindowManager(store: store)
@@ -62,14 +63,112 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         store.update(id) { $0.alwaysOnTop.toggle() }
     }
 
+    /// Applies a change to the note whose window is frontmost.
+    private func updateKeyNote(_ body: (inout Note) -> Void) {
+        guard let id = windows.keyNoteID else { NSSound.beep(); return }
+        store.update(id, body)
+    }
+
+    @objc func setColor(_ sender: NSMenuItem) {
+        updateKeyNote { $0.colorIndex = sender.tag }
+    }
+
+    @objc func setFontStyle(_ sender: NSMenuItem) {
+        let styles = FontStyle.allCases
+        guard styles.indices.contains(sender.tag) else { return }
+        updateKeyNote { $0.fontStyle = styles[sender.tag] }
+    }
+
+    @objc func setOpacity(_ sender: NSMenuItem) {
+        updateKeyNote { $0.paperOpacity = Double(sender.tag) / 100 }
+    }
+
+    @objc func biggerText(_ sender: Any?) { updateKeyNote { $0.fontSize = min($0.fontSize + 1, 26) } }
+    @objc func smallerText(_ sender: Any?) { updateKeyNote { $0.fontSize = max($0.fontSize - 1, 10) } }
+    @objc func moreOpaque(_ sender: Any?) { updateKeyNote { $0.paperOpacity = min($0.paperOpacity + 0.05, 1.0) } }
+    @objc func lessOpaque(_ sender: Any?) { updateKeyNote { $0.paperOpacity = max($0.paperOpacity - 0.05, 0.2) } }
+
     @objc func openNote(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? UUID else { return }
         windows.focus(id)
     }
 
+    /// Rebuilt on open so the checkmarks track whichever note is frontmost.
+    private func rebuildFormatMenu(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let note = windows.keyNoteID.flatMap { store.note($0) }
+
+        let colors = NSMenu()
+        for palette in StickyPalette.all {
+            let item = NSMenuItem(title: palette.name, action: #selector(setColor(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = palette.id
+            item.state = note?.colorIndex == palette.id ? .on : .off
+            colors.addItem(item)
+        }
+        let colorItem = NSMenuItem(title: "Color", action: nil, keyEquivalent: "")
+        colorItem.submenu = colors
+        menu.addItem(colorItem)
+
+        let opacities = NSMenu()
+        for value in Note.opacityPresets {
+            let percent = Int(value * 100)
+            let item = NSMenuItem(title: "\(percent)%", action: #selector(setOpacity(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = percent
+            item.state = note.map { abs($0.paperOpacity - value) < 0.01 } == true ? .on : .off
+            opacities.addItem(item)
+        }
+        let opacityItem = NSMenuItem(title: "Transparency", action: nil, keyEquivalent: "")
+        opacityItem.submenu = opacities
+        menu.addItem(opacityItem)
+
+        let fonts = NSMenu()
+        for (index, style) in FontStyle.allCases.enumerated() {
+            let item = NSMenuItem(title: style.label, action: #selector(setFontStyle(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            item.state = note?.fontStyle == style ? .on : .off
+            fonts.addItem(item)
+        }
+        let fontItem = NSMenuItem(title: "Font", action: nil, keyEquivalent: "")
+        fontItem.submenu = fonts
+        menu.addItem(fontItem)
+
+        menu.addItem(.separator())
+        add(to: menu, "Bigger Text", #selector(biggerText(_:)), "+", [.command])
+        add(to: menu, "Smaller Text", #selector(smallerText(_:)), "-", [.command])
+        menu.addItem(.separator())
+        add(to: menu, "More Opaque", #selector(moreOpaque(_:)), "+", [.command, .option])
+        add(to: menu, "More Transparent", #selector(lessOpaque(_:)), "-", [.command, .option])
+        menu.addItem(.separator())
+
+        let float = NSMenuItem(title: "Float Above Other Windows",
+                               action: #selector(toggleFloatOnTop(_:)), keyEquivalent: "t")
+        float.target = self
+        float.state = note?.alwaysOnTop == true ? .on : .off
+        menu.addItem(float)
+    }
+
+    private func add(to menu: NSMenu, _ title: String, _ action: Selector,
+                     _ key: String, _ modifiers: NSEvent.ModifierFlags) {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.keyEquivalentModifierMask = modifiers
+        item.target = self
+        menu.addItem(item)
+    }
+
     // MARK: Menu
 
     private func buildMenu() {
+        // AppKit injects Dictation and Emoji & Symbols into any menu titled "Edit",
+        // and does it more than once — leaving visible duplicates. The system-wide
+        // shortcuts for both still work without the menu entries.
+        UserDefaults.standard.register(defaults: [
+            "NSDisabledDictationMenuItem": true,
+            "NSDisabledCharacterPaletteMenuItem": true,
+        ])
+
         let main = NSMenu()
 
         let appItem = NSMenuItem()
@@ -106,6 +205,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         editItem.submenu = editMenu
         main.addItem(editItem)
 
+        let formatItem = NSMenuItem()
+        formatMenu = NSMenu(title: "Format")
+        formatMenu.delegate = self
+        formatItem.submenu = formatMenu
+        main.addItem(formatItem)
+
         let notesItem = NSMenuItem()
         notesMenu = NSMenu(title: "Notes")
         notesMenu.delegate = self
@@ -116,6 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === formatMenu { rebuildFormatMenu(menu) }
         guard menu === notesMenu else { return }
         menu.removeAllItems()
 

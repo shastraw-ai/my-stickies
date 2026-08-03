@@ -27,7 +27,6 @@ Each note is a window with a title and a checklist. Type in a row and use:
 | `⌫` on an empty row | Delete the row |
 | `⌘N` | New note |
 | `⌘W` | Close the note (keeps it — reopen from the Notes menu) |
-| `⌘T` | Toggle "float above other windows" for the front note |
 | `⌘0` | Show every note again |
 
 Click a checkbox to strike a row through. Checking a parent checks everything under
@@ -37,9 +36,24 @@ chevron — collapse one and it shows a `2/5` progress count instead.
 The `✕` on hover deletes a single row (and anything nested under it). The trash button
 in the header deletes the whole note, after a confirmation.
 
-The `aA` button opens appearance settings for that note: color, font family, font size,
-paper opacity, and whether the note floats above other apps' windows. Every setting is
-per-note.
+## Color, font, and transparency
+
+Every appearance setting is **per-note** and saved with the note. Three ways to reach
+them, whichever you find first:
+
+- The **palette button** in the note header — color swatches, font, size slider, and a
+  transparency slider in one popover.
+- **Right-click anywhere on a note** — Color, Transparency, and Font submenus.
+- The **Format menu** in the menu bar, which also has shortcuts:
+
+| Key | Does |
+| --- | --- |
+| `⌘+` / `⌘-` | Bigger / smaller text |
+| `⌥⌘+` / `⌥⌘-` | More opaque / more transparent, in 5% steps |
+| `⌘T` | Float this note above other windows |
+
+Transparency runs from 100% down to 20%. It applies to the paper only — the text stays
+fully opaque so a see-through note is still readable.
 
 Closing a note's window hides it rather than deleting it — everything is still in the
 Notes menu, and `⌘0` brings them all back. Clicking the Dock icon does the same.

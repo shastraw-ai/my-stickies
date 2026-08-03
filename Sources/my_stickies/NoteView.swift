@@ -19,6 +19,7 @@ struct NoteView: View {
             list
         }
         .background(palette.paper.opacity(note.paperOpacity))
+        .contextMenu { appearanceMenu }
         .environment(\.colorScheme, note.colorIndex == 6 ? .dark : .light)
     }
 
@@ -35,7 +36,7 @@ struct NoteView: View {
             Spacer(minLength: 4)
 
             headerButton("plus", help: "Add item") { appendItem() }
-            headerButton("textformat.size", help: "Appearance") { showingSettings = true }
+            headerButton("paintpalette", help: "Color, font & transparency") { showingSettings = true }
                 .popover(isPresented: $showingSettings, arrowEdge: .bottom) { settings }
             headerButton("trash", help: "Delete note") { confirmDeleteNote() }
         }
@@ -96,7 +97,8 @@ struct NoteView: View {
             design: note.fontStyle.design,
             text: itemTextBinding(item.id),
             isFocused: focusedItem == item.id,
-            onFocus: { focusedItem = item.id },
+            onFocus: { if focusedItem != item.id { focusedItem = item.id } },
+            onStrayInput: { appendToFocusedItem($0) },
             onToggleCheck: { mutate { $0.setChecked(!item.checked, at: idx(item.id, in: $0) ?? index) } },
             onToggleCollapse: {
                 mutate { items in
@@ -159,6 +161,46 @@ struct NoteView: View {
         }
         .padding(14)
         .frame(width: 260)
+    }
+
+    /// Right-click menu — the same settings without hunting for the header button.
+    @ViewBuilder private var appearanceMenu: some View {
+        Menu("Color") {
+            ForEach(StickyPalette.all) { p in
+                Button { store.update(noteID) { $0.colorIndex = p.id } } label: {
+                    if note.colorIndex == p.id { Label(p.name, systemImage: "checkmark") } else { Text(p.name) }
+                }
+            }
+        }
+        Menu("Transparency") {
+            ForEach(Note.opacityPresets, id: \.self) { value in
+                Button { store.update(noteID) { $0.paperOpacity = value } } label: {
+                    let label = "\(Int(value * 100))%"
+                    if abs(note.paperOpacity - value) < 0.01 {
+                        Label(label, systemImage: "checkmark")
+                    } else {
+                        Text(label)
+                    }
+                }
+            }
+        }
+        Menu("Font") {
+            ForEach(FontStyle.allCases) { style in
+                Button { store.update(noteID) { $0.fontStyle = style } } label: {
+                    if note.fontStyle == style { Label(style.label, systemImage: "checkmark") } else { Text(style.label) }
+                }
+            }
+            Divider()
+            Button("Bigger") { store.update(noteID) { $0.fontSize = min($0.fontSize + 1, 26) } }
+            Button("Smaller") { store.update(noteID) { $0.fontSize = max($0.fontSize - 1, 10) } }
+        }
+        Divider()
+        Button(note.alwaysOnTop ? "Stop Floating Above Others" : "Float Above Others") {
+            store.update(noteID) { $0.alwaysOnTop.toggle() }
+        }
+        Button("Color, Font & Transparency…") { showingSettings = true }
+        Divider()
+        Button("Delete Note…") { confirmDeleteNote() }
     }
 
     private func labeledSlider(_ label: String, value: Binding<Double>,
@@ -239,6 +281,15 @@ struct NoteView: View {
         focusedItem = nextFocus
     }
 
+    /// Rescues keystrokes that reached the previous row during a focus handoff.
+    private func appendToFocusedItem(_ characters: String) {
+        guard let target = focusedItem else { return }
+        mutate { items in
+            guard let i = idx(target, in: items) else { return }
+            items[i].text += characters
+        }
+    }
+
     private func moveFocus(from itemID: UUID, by offset: Int) {
         let items = note.items
         let visible = items.visibleIndices
@@ -282,6 +333,7 @@ private struct ItemRow: View {
     let isFocused: Bool
 
     let onFocus: () -> Void
+    let onStrayInput: (String) -> Void
     let onToggleCheck: () -> Void
     let onToggleCollapse: () -> Void
     let onEnter: () -> Void
@@ -334,7 +386,8 @@ private struct ItemRow: View {
                 onShiftTab: onShiftTab,
                 onDeleteEmpty: onDeleteEmpty,
                 onMoveUp: onMoveUp,
-                onMoveDown: onMoveDown
+                onMoveDown: onMoveDown,
+                onStrayInput: onStrayInput
             )
 
             if let progress, item.collapsed {

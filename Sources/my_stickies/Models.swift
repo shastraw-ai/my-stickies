@@ -116,6 +116,8 @@ struct Note: Codable, Identifiable {
     var alwaysOnTop: Bool = true
     var isHidden: Bool = false
 
+    static let opacityPresets: [Double] = [1.0, 0.9, 0.75, 0.6, 0.45, 0.3, 0.2]
+
     var palette: StickyPalette { StickyPalette.at(colorIndex) }
 
     /// Title fallback used in menus.

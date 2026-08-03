@@ -21,6 +21,8 @@ struct OutlineTextField: NSViewRepresentable {
     var onDeleteEmpty: () -> Void = {}
     var onMoveUp: () -> Void = {}
     var onMoveDown: () -> Void = {}
+    /// Text typed into this row after focus had already moved on — belongs elsewhere.
+    var onStrayInput: (String) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -45,12 +47,20 @@ struct OutlineTextField: NSViewRepresentable {
         context.coordinator.parent = self
         context.coordinator.apply(to: nsView, force: false)
 
-        if isFocused, nsView.currentEditor() == nil, let window = nsView.window, window.isVisible {
-            DispatchQueue.main.async {
-                guard nsView.currentEditor() == nil else { return }
-                window.makeFirstResponder(nsView)
-                nsView.currentEditor()?.selectedRange = NSRange(location: nsView.stringValue.utf16.count, length: 0)
-            }
+        guard let field = nsView as? WrappingTextField else { return }
+        guard isFocused else {
+            field.focusWhenPlaced = false
+            return
+        }
+        guard field.currentEditor() == nil else { return }
+
+        // A row created by ⏎ isn't in the window yet on its first update. Focusing
+        // asynchronously would let the next keystroke land in the previous row, so
+        // hand the request to the view and let it claim focus the moment it's placed.
+        if let window = field.window, window.isVisible {
+            field.takeFocus(in: window)
+        } else {
+            field.focusWhenPlaced = true
         }
     }
 
@@ -110,9 +120,31 @@ struct OutlineTextField: NSViewRepresentable {
         func controlTextDidChange(_ obj: Notification) {
             guard let field = obj.object as? NSTextField else { return }
             let value = field.stringValue
+
+            // Focus already moved to another row, yet this field still holds the field
+            // editor. Whatever was typed belongs to the new row — put it back and
+            // forward it rather than silently corrupting this one.
+            if !parent.isFocused, value != parent.text {
+                let stray = Coordinator.inserted(from: parent.text, to: value)
+                field.stringValue = parent.text
+                appliedSignature = ""
+                apply(to: field, force: true)
+                if !stray.isEmpty { parent.onStrayInput(stray) }
+                return
+            }
+
             appliedSignature = "\(value)|\(parent.strikethrough)|\(parent.font.fontName)|\(parent.font.pointSize)|\(parent.color.description)"
             parent.text = value
             field.invalidateIntrinsicContentSize()
+        }
+
+        /// The characters `new` has that `old` didn't, assuming a single insertion.
+        static func inserted(from old: String, to new: String) -> String {
+            guard new.count > old.count else { return "" }
+            let oldChars = Array(old), newChars = Array(new)
+            var prefix = 0
+            while prefix < oldChars.count, newChars[prefix] == oldChars[prefix] { prefix += 1 }
+            return String(newChars[prefix ..< prefix + (newChars.count - oldChars.count)])
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
@@ -154,7 +186,23 @@ struct OutlineTextField: NSViewRepresentable {
 }
 
 /// NSTextField only reports a wrapped intrinsic height if it knows the width it must fit.
-private final class WrappingTextField: NSTextField {
+final class WrappingTextField: NSTextField {
+    /// Set when SwiftUI wants this row focused before it has joined a window.
+    var focusWhenPlaced = false
+
+    func takeFocus(in window: NSWindow) {
+        focusWhenPlaced = false
+        guard currentEditor() == nil else { return }   // already editing
+        window.makeFirstResponder(self)
+        currentEditor()?.selectedRange = NSRange(location: stringValue.utf16.count, length: 0)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard focusWhenPlaced, let window, window.isVisible else { return }
+        takeFocus(in: window)
+    }
+
     override var intrinsicContentSize: NSSize {
         guard preferredMaxLayoutWidth > 0 else { return super.intrinsicContentSize }
         return sizeThatFits(NSSize(width: preferredMaxLayoutWidth, height: .greatestFiniteMagnitude))

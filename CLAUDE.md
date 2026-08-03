@@ -19,6 +19,12 @@ product, binary, and bundle are all `my-stickies`; don't reintroduce a second na
 - Checklist rows must use `OutlineTextField`, not SwiftUI `TextField` — SwiftUI
   eats `⇥` for focus traversal and drops strikethrough in the field editor.
 - Mac-only by design. Don't add cross-platform abstractions.
+- Focus moves between rows via `WrappingTextField.takeFocus` / `focusWhenPlaced`,
+  never `DispatchQueue.main.async`. A new row isn't in a window during its first
+  `updateNSView`, and an async hop lets the next keystroke land in the old row.
+  `onStrayInput` is the backstop; don't remove it.
+- Appearance (color/font/size/opacity) must stay reachable from all three of: header
+  popover, right-click menu, Format menu. Users don't find a single entry point.
 
 ## Env vars
 - `MY_STICKIES_NOTES` — alternate notes.json path

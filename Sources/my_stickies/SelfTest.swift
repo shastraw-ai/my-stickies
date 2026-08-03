@@ -15,6 +15,7 @@ enum SelfTest {
         checking()
         editing()
         visibility()
+        strayInput()
 
         if failures.isEmpty {
             print("ok — \(checks) checks passed")
@@ -165,6 +166,21 @@ enum SelfTest {
         expect(!items[0].checked, "parent open before delete")
         items.removeSubtree(at: 2)
         expect(items[0].checked, "parent rechecks after its last open child is deleted")
+    }
+
+    // MARK: Focus handoff
+
+    /// A keystroke that lands in the old row during a ⏎ handoff has to be extracted
+    /// verbatim so it can be replayed into the row that should have received it.
+    private static func strayInput() {
+        let inserted = OutlineTextField.Coordinator.inserted
+        expect(inserted("Antes", "AntesC"), "C", "character appended at the end")
+        expect(inserted("", "T"), "T", "first character of an empty row")
+        expect(inserted("larity Care", "Clarity Care"), "C", "character inserted at the start")
+        expect(inserted("abcd", "abXcd"), "X", "character inserted mid-string")
+        expect(inserted("abc", "abc"), "", "no change yields nothing")
+        expect(inserted("abc", "ab"), "", "deletions are not stray input")
+        expect(inserted("Ant", "Antes"), "es", "multi-character paste")
     }
 
     // MARK: Visibility
