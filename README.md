@@ -1,7 +1,7 @@
 # my-stickies
 
 A macOS sticky-note app where every note is a checklist. Notes float above other
-windows, nest to arbitrary depth, and live in one JSON file you own.
+windows, nest to arbitrary depth, and live in plain JSON files you own.
 
 Native Swift + AppKit/SwiftUI. macOS 13+. No dependencies, no Xcode required.
 
@@ -34,7 +34,7 @@ it; a parent checks itself once all of its children are done. Rows with children
 chevron — collapse one and it shows a `2/5` progress count instead.
 
 The `✕` on hover deletes a single row (and anything nested under it). The trash button
-in the header deletes the whole note, after a confirmation.
+in the header moves the whole note to the trash, where you can put it back.
 
 ## Color, font, and transparency
 
@@ -124,3 +124,7 @@ checking rendering without screen-recording permission.
 Hierarchy is stored as a **flat array plus a `depth` field**, not a nested tree. Indent,
 outdent, delete-with-children, and collapse all become index arithmetic over a
 contiguous range — see `descendantRange(of:)` in `Models.swift`.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
