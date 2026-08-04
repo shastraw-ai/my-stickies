@@ -29,7 +29,9 @@ product, binary, and bundle are all `my-stickies`; don't reintroduce a second na
   permanent deletion (purge, empty trash) confirms. Don't add an alert to
   `moveToTrash`.
 - New `Note` fields must be Optional or the synthesized decoder throws on existing
-  files. Non-optional-with-default does NOT decode a missing key.
+  files. Non-optional-with-default does NOT decode a missing key. Expose a
+  non-optional computed accessor (see `turnsSolidInUse`) and cover it in
+  `legacyDecoding()`.
 
 ## Files
 - `notes.json` — active notes; `trash_notes.json` — deleted, beside it always.

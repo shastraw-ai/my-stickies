@@ -83,6 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateKeyNote { $0.paperOpacity = Double(sender.tag) / 100 }
     }
 
+    @objc func toggleSolidInUse(_ sender: Any?) { updateKeyNote { $0.turnsSolidInUse.toggle() } }
     @objc func biggerText(_ sender: Any?) { updateKeyNote { $0.fontSize = min($0.fontSize + 1, 26) } }
     @objc func smallerText(_ sender: Any?) { updateKeyNote { $0.fontSize = max($0.fontSize - 1, 10) } }
     @objc func moreOpaque(_ sender: Any?) { updateKeyNote { $0.paperOpacity = min($0.paperOpacity + 0.05, 1.0) } }
@@ -182,6 +183,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         add(to: menu, "More Opaque", #selector(moreOpaque(_:)), "+", [.command, .option])
         add(to: menu, "More Transparent", #selector(lessOpaque(_:)), "-", [.command, .option])
         menu.addItem(.separator())
+
+        let solid = NSMenuItem(title: "Turn Solid When In Use",
+                               action: #selector(toggleSolidInUse(_:)), keyEquivalent: "")
+        solid.target = self
+        solid.state = note?.turnsSolidInUse == true ? .on : .off
+        menu.addItem(solid)
 
         let float = NSMenuItem(title: "Float Above Other Windows",
                                action: #selector(toggleFloatOnTop(_:)), keyEquivalent: "t")

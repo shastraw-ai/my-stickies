@@ -7,10 +7,20 @@ struct NoteView: View {
 
     @State private var focusedItem: UUID?
     @State private var showingSettings = false
+    @State private var isHovered = false
+    @Environment(\.controlActiveState) private var activeState
 
     private var note: Note { store.note(noteID) ?? Note() }
     private var palette: StickyPalette { note.palette }
     private var itemFont: NSFont { note.fontStyle.nsFont(size: note.fontSize) }
+
+    /// A see-through note is for glancing past, not reading. Pointing at it — or
+    /// typing in it — means you want it legible, so drop the transparency.
+    private var paperOpacity: Double {
+        guard note.turnsSolidInUse else { return note.paperOpacity }
+        let inUse = isHovered || activeState == .key
+        return inUse ? 1.0 : note.paperOpacity
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,7 +28,9 @@ struct NoteView: View {
             Rectangle().fill(palette.ink.opacity(0.12)).frame(height: 1)
             list
         }
-        .background(palette.paper.opacity(note.paperOpacity))
+        .background(palette.paper.opacity(paperOpacity))
+        .animation(.easeOut(duration: 0.14), value: paperOpacity)
+        .onHover { isHovered = $0 }
         .contextMenu { appearanceMenu }
         .environment(\.colorScheme, note.colorIndex == 6 ? .dark : .light)
     }
@@ -155,6 +167,11 @@ struct NoteView: View {
             labeledSlider("Opacity", value: binding(\.paperOpacity), range: 0.2...1.0, step: 0.05,
                           readout: "\(Int(note.paperOpacity * 100))%")
 
+            Toggle("Turn solid when in use", isOn: binding(\.turnsSolidInUse))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .help("Ignore transparency while the pointer is over this note, or while you're typing in it")
+
             Toggle("Float above other windows", isOn: binding(\.alwaysOnTop))
                 .toggleStyle(.switch)
                 .controlSize(.small)
@@ -195,6 +212,9 @@ struct NoteView: View {
             Button("Smaller") { store.update(noteID) { $0.fontSize = max($0.fontSize - 1, 10) } }
         }
         Divider()
+        Button(note.turnsSolidInUse ? "Stay Transparent When In Use" : "Turn Solid When In Use") {
+            store.update(noteID) { $0.turnsSolidInUse.toggle() }
+        }
         Button(note.alwaysOnTop ? "Stop Floating Above Others" : "Float Above Others") {
             store.update(noteID) { $0.alwaysOnTop.toggle() }
         }

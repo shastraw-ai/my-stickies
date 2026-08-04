@@ -16,6 +16,7 @@ enum SelfTest {
         editing()
         visibility()
         strayInput()
+        legacyDecoding()
         trashRoundTrip()
 
         if failures.isEmpty {
@@ -167,6 +168,40 @@ enum SelfTest {
         expect(!items[0].checked, "parent open before delete")
         items.removeSubtree(at: 2)
         expect(items[0].checked, "parent rechecks after its last open child is deleted")
+    }
+
+    // MARK: Schema compatibility
+
+    /// A notes.json written before a field existed must still load. Swift's synthesized
+    /// decoder throws on a missing key for any non-Optional property, default or not,
+    /// so every field added after v1 has to be Optional.
+    private static func legacyDecoding() {
+        let v1 = """
+        [{"alwaysOnTop":true,"colorIndex":1,"fontSize":13,"fontStyle":"mono",
+          "frame":[[-517,615],[300,340]],"id":"114A6426-0000-0000-0000-000000000000",
+          "isHidden":false,"paperOpacity":0.45,"title":"FollowUps",
+          "items":[{"checked":true,"collapsed":false,"depth":0,
+                    "id":"114A6426-0000-0000-0000-000000000001","text":"done"}]}]
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        guard let notes = try? decoder.decode([Note].self, from: Data(v1.utf8)) else {
+            expect(false, "a v1 notes.json still decodes")
+            return
+        }
+        expect(notes.count, 1, "v1 file decodes one note")
+        expect(notes[0].title, "FollowUps", "v1 title survives")
+        expect(notes[0].paperOpacity, 0.45, "v1 transparency survives")
+        expect(notes[0].deletedAt == nil, "a missing deletedAt decodes as nil")
+        expect(notes[0].opaqueOnHover == nil, "a missing opaqueOnHover decodes as nil")
+        expect(notes[0].turnsSolidInUse, "a note with no preference turns solid in use")
+
+        var note = notes[0]
+        note.turnsSolidInUse = false
+        expect(note.opaqueOnHover == false, "turning it off writes through to the stored field")
+        expect(!note.turnsSolidInUse, "and reads back off")
+        note.turnsSolidInUse = true
+        expect(note.turnsSolidInUse, "and back on again")
     }
 
     // MARK: Trash

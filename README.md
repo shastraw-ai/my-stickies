@@ -55,6 +55,12 @@ them, whichever you find first:
 Transparency runs from 100% down to 20%. It applies to the paper only — the text stays
 fully opaque so a see-through note is still readable.
 
+**Turn solid when in use** (on by default) makes a transparent note go fully opaque
+while the pointer is over it, or while it's the note you're typing in, then fade back
+when you move away. So a note can sit at 30% to stay out of the way and still be
+readable the moment you look at it. Turn it off per-note if you'd rather it never
+change — it's in the same three places as the other settings.
+
 ## Reopening and deleting notes
 
 Closing a note's window (`⌘W` or the red button) puts it away without deleting it.

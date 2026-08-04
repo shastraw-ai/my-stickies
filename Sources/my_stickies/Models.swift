@@ -117,6 +117,14 @@ struct Note: Codable, Identifiable {
     var isHidden: Bool = false
     /// Set only while the note sits in the trash. Optional so older files still decode.
     var deletedAt: Date?
+    /// Optional so older files still decode; absent means on. Use `turnsSolidInUse`.
+    var opaqueOnHover: Bool?
+
+    /// Whether the note ignores its transparency while hovered or frontmost.
+    var turnsSolidInUse: Bool {
+        get { opaqueOnHover ?? true }
+        set { opaqueOnHover = newValue }
+    }
 
     static let opacityPresets: [Double] = [1.0, 0.9, 0.75, 0.6, 0.45, 0.3, 0.2]
 
