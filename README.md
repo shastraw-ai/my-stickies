@@ -1,18 +1,43 @@
 # my-stickies
 
-A macOS sticky-note app where every note is a checklist. Notes float above other
-windows, nest to arbitrary depth, and live in plain JSON files you own.
+**Sticky notes for macOS where every note is a nested checklist.** Notes float above your
+other windows, indent to any depth with `⇥`, turn translucent when you're not using them, and
+save to plain JSON files you own. Native Swift + AppKit/SwiftUI — no dependencies, no Electron,
+no account, no Xcode.
 
-Native Swift + AppKit/SwiftUI. macOS 13+. No dependencies, no Xcode required.
+[![Build](https://github.com/shastraw-ai/my-stickies/actions/workflows/build.yml/badge.svg)](https://github.com/shastraw-ai/my-stickies/actions/workflows/build.yml)
+![macOS 13+](https://img.shields.io/badge/macOS-13%2B-111111)
+![Swift 5.9](https://img.shields.io/badge/Swift-5.9-F05138)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2E7D32)](LICENSE)
 
-## Build
+![Three my-stickies notes on a desktop: a yellow note with nested, struck-through checklist rows, a blue note with a collapsed row showing a 2/5 progress count, and a green note overlapping it](docs/screenshot.png)
+
+## Features
+
+- **Checkboxes that nest** — `⇥` tucks a row under the one above it, up to eight levels deep.
+  Checking a parent checks its whole subtree; a parent ticks itself once its children are done.
+- **Collapse a branch** — a folded row hides its children and shows `2/5` progress instead.
+- **Always on top** — every note is a floating panel that stays above other apps, per note (`⌘T`).
+- **Transparency** — per-note opacity from 100% down to 20%, plus *turn solid when in use*, so a
+  note parked at 30% goes fully readable the moment you point at it and fades back after.
+- **Per-note color, font, and size** — seven palettes including a dark one, four font styles, and
+  10–26pt, reachable from the note header, a right-click, or the Format menu.
+- **Recoverable trash** — deleting a note is undoable with **Put Back**; only permanent deletion asks.
+- **Plain JSON storage** — one `notes.json` you can read, diff, back up, or drop in a synced
+  folder. No database, no cloud, nothing to sign into.
+- **Keyboard-first outlining** — `⏎`, `⇥`, `⇧⇥`, `↑`/`↓`, `⌫`, and `⌘N` do the whole job.
+
+## Install
 
 ```sh
-./build.sh              # -> build/my-stickies.app
-./build.sh --install    # also copies it to /Applications
+git clone https://github.com/shastraw-ai/my-stickies.git
+cd my-stickies
+./build.sh --install     # -> /Applications/my-stickies.app
 ```
 
-Then open it from `/Applications` (or `open build/my-stickies.app`).
+`./build.sh` on its own builds to `build/my-stickies.app` without installing. Requires macOS 13+
+and the Swift toolchain that ships with the Command Line Tools (`xcode-select --install`) — full
+Xcode is not needed.
 
 ## Using it
 

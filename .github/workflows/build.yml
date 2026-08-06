@@ -1,0 +1,26 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift version
+        run: swift --version
+
+      - name: Build
+        run: swift build -c release
+
+      # XCTest needs Xcode; the outline assertions live in the binary instead.
+      - name: Self-test
+        run: ./.build/release/my-stickies --self-test
+
+      - name: Bundle the app
+        run: ./build.sh

@@ -32,6 +32,10 @@ product, binary, and bundle are all `my-stickies`; don't reintroduce a second na
   files. Non-optional-with-default does NOT decode a missing key. Expose a
   non-optional computed accessor (see `turnsSolidInUse`) and cover it in
   `legacyDecoding()`.
+- CI (`.github/workflows/build.yml`) runs `--self-test` on macos-latest; keep it green.
+- The README screenshot (`docs/screenshot.png`) is made by hand: seed a demo notes file,
+  launch with `MY_STICKIES_SNAPSHOT`, composite the window PNGs. Always point
+  `MY_STICKIES_NOTES` at a temp file first — never at real notes.
 
 ## Files
 - `notes.json` — active notes; `trash_notes.json` — deleted, beside it always.
