@@ -325,6 +325,40 @@ struct NoteView: View {
     }
 }
 
+// MARK: - Collapsed chip
+
+/// The title-only pill a note shrinks to while minimized. Tapping it expands the note back.
+struct CollapsedChipView: View {
+    @ObservedObject var store: Store
+    let noteID: UUID
+    let onExpand: () -> Void
+
+    private var note: Note { store.note(noteID) ?? Note() }
+    private var palette: StickyPalette { note.palette }
+
+    var body: some View {
+        // A Button, not onTapGesture/contentShape — matches how every other click target
+        // in this app is built, and is what reliably registers clicks inside a hosted panel.
+        Button(action: onExpand) {
+            Text(note.menuTitle)
+                .font(.system(size: 12, weight: .medium, design: note.fontStyle.design))
+                .foregroundStyle(palette.ink)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+        }
+        .buttonStyle(.plain)
+        // A chip that's meant to be glanced at and clicked shouldn't be so transparent
+        // it's unreadable, even if the note itself is set very see-through.
+        .background(palette.paper.opacity(max(note.paperOpacity, 0.85)))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(palette.ink.opacity(0.15)))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .help(note.menuTitle)
+    }
+}
+
 // MARK: - Row
 
 private struct ItemRow: View {

@@ -53,6 +53,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         windows.showAll()
     }
 
+    @objc func collapseAllNotes(_ sender: Any?) {
+        windows.collapseAllVisible()
+    }
+
     @objc func revealNotesFile(_ sender: Any?) {
         store.saveNow()
         NSWorkspace.shared.activateFileViewerSelecting([Store.fileURL])
@@ -285,6 +289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(.separator())
         add(to: menu, "Show All Notes", #selector(showAllNotes(_:)), "0", [.command])
+        add(to: menu, "Minimize All Notes", #selector(collapseAllNotes(_:)), "n", [.command, .shift])
     }
 
     private func openNoteSubmenu() -> NSMenu {
