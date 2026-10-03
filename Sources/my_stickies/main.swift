@@ -62,6 +62,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSWorkspace.shared.activateFileViewerSelecting([Store.fileURL])
     }
 
+    @objc func syncWithGoogleDrive(_ sender: Any?) {
+        Task { await DriveSync.run(store: store) }
+    }
+
+    @objc func disconnectGoogleDrive(_ sender: Any?) {
+        DriveSync.disconnect()
+    }
+
     @objc func toggleFloatOnTop(_ sender: Any?) {
         guard let id = windows.keyNoteID else { return }
         store.update(id) { $0.alwaysOnTop.toggle() }
@@ -240,6 +248,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         fileMenu.addItem(.separator())
         fileMenu.addItem(withTitle: "Save Now", action: #selector(saveNotes(_:)), keyEquivalent: "s")
         fileMenu.addItem(withTitle: "Reveal notes.json in Finder", action: #selector(revealNotesFile(_:)), keyEquivalent: "")
+        fileMenu.addItem(.separator())
+        fileMenu.addItem(withTitle: "Sync with Google Drive", action: #selector(syncWithGoogleDrive(_:)), keyEquivalent: "r")
+        fileMenu.addItem(withTitle: "Disconnect Google Drive", action: #selector(disconnectGoogleDrive(_:)), keyEquivalent: "")
         fileItem.submenu = fileMenu
         main.addItem(fileItem)
 

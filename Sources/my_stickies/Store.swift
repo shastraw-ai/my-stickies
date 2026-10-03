@@ -98,6 +98,16 @@ final class Store: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
 
+    /// Re-reads both files from disk, e.g. after a sync overwrites them underneath the app.
+    func reloadFromDisk() {
+        loading = true
+        if let n = Store.read(Store.fileURL) { notes = n }
+        if let t = Store.read(Store.trashURL) { trash = t }
+        loading = false
+        notesDirty = false
+        trashDirty = false
+    }
+
     func saveNow() {
         pendingSave?.cancel()
         pendingSave = nil

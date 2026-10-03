@@ -18,6 +18,7 @@ enum SelfTest {
         strayInput()
         legacyDecoding()
         trashRoundTrip()
+        driveSyncDecision()
 
         if failures.isEmpty {
             print("ok — \(checks) checks passed")
@@ -266,6 +267,25 @@ enum SelfTest {
 
         let afterEmpty = Store()
         expect(afterEmpty.trash.isEmpty, "an emptied trash stays empty across a reload")
+    }
+
+    // MARK: Google Drive sync
+
+    /// The half of DriveSync.swift that doesn't touch the network or Keychain: whichever
+    /// side changed since the last sync wins; both changing is a conflict, not a guess.
+    private static func driveSyncDecision() {
+        expect(SyncDecision.action(remoteExists: false, localChanged: true, remoteChanged: false),
+               .upload, "no remote file yet always uploads")
+        expect(SyncDecision.action(remoteExists: false, localChanged: false, remoteChanged: false),
+               .upload, "even an unchanged local file seeds a first-ever remote copy")
+        expect(SyncDecision.action(remoteExists: true, localChanged: false, remoteChanged: false),
+               .none, "neither side changed since the last sync")
+        expect(SyncDecision.action(remoteExists: true, localChanged: true, remoteChanged: false),
+               .upload, "only the local file changed")
+        expect(SyncDecision.action(remoteExists: true, localChanged: false, remoteChanged: true),
+               .download, "only the Drive file changed")
+        expect(SyncDecision.action(remoteExists: true, localChanged: true, remoteChanged: true),
+               .conflict, "both sides changed — never silently pick a winner")
     }
 
     // MARK: Focus handoff
