@@ -29,15 +29,21 @@ enum DriveSync {
     /// file yet, upload a duplicate notes.json.
     @MainActor private static var isRunning = false
 
+    /// `interactive: false` is the periodic background sync: it never opens a sign-in and
+    /// logs failures instead of showing an alert.
     @MainActor
-    static func run(store: Store) async {
+    static func run(store: Store, interactive: Bool = true) async {
         guard !isRunning else { return }
         isRunning = true
         defer { isRunning = false }
         do {
-            try await sync(store: store)
+            try await sync(store: store, interactive: interactive)
         } catch {
-            presentError(error)
+            if interactive {
+                presentError(error)
+            } else {
+                NSLog("my-stickies: background Drive sync failed — \(error.localizedDescription)")
+            }
         }
     }
 
@@ -61,7 +67,7 @@ enum DriveSync {
     // MARK: Orchestration
 
     @MainActor
-    private static func sync(store: Store) async throws {
+    private static func sync(store: Store, interactive: Bool) async throws {
         store.saveNow()
 
         // A stored token Google no longer honors (revoked, or the 7-day expiry for OAuth apps
@@ -70,11 +76,12 @@ enum DriveSync {
         if let existing = Keychain.get(refreshTokenAccount) {
             do {
                 accessToken = try await step("refresh access token") { try await refreshAccessToken(refreshToken: existing) }
-            } catch DriveSyncError.revoked {
+            } catch DriveSyncError.revoked where interactive {
                 Keychain.delete(refreshTokenAccount)
             }
         }
         if accessToken == nil {
+            guard interactive else { return }
             let refreshToken = try await step("sign in") { try await signIn() }
             Keychain.set(refreshToken, account: refreshTokenAccount)
             accessToken = try await step("refresh access token") { try await refreshAccessToken(refreshToken: refreshToken) }
@@ -146,7 +153,7 @@ enum DriveSync {
         if let notes = SyncBase.load(notesPlan.fileName), let trash = SyncBase.load(trashPlan.fileName) {
             base = try? NoteMerge.Side(notes: Store.decode(notes), trash: Store.decode(trash))
         }
-        let merged = NoteMerge.merge(base: base, local: local, remote: drive)
+        let merged = NoteMerge.merge(base: base, local: local, remote: drive, now: Date())
         let mergedNotes = try Store.encode(merged.notes)
         let mergedTrash = try Store.encode(merged.trash)
 
@@ -598,8 +605,12 @@ enum NoteMerge {
 
     /// `base` is nil when this Mac has never synced (or synced before merging existed). Then
     /// nothing counts as deleted, and notes on both sides with different text are both kept.
-    static func merge(base: Side?, local: Side, remote: Side) -> Side {
-        let b = base.map(entries) ?? [:], l = entries(local), r = entries(remote)
+    ///
+    /// Expired checked items are dropped from all three sides first, at the same `now`, so
+    /// each Mac expiring them on its own doesn't read as conflicting text edits.
+    static func merge(base: Side?, local: Side, remote: Side, now: Date) -> Side {
+        let local = expiring(local, now), remote = expiring(remote, now)
+        let b = base.map { entries(expiring($0, now)) } ?? [:], l = entries(local), r = entries(remote)
 
         var merged: [Entry] = []
         var copies: [Note] = []
@@ -618,6 +629,12 @@ enum NoteMerge {
             }
             .map(\.element.note)
         return Side(notes: merged.filter { !$0.inTrash }.map(\.note) + copies, trash: trash)
+    }
+
+    private static func expiring(_ side: Side, _ now: Date) -> Side {
+        var side = side
+        for i in side.notes.indices { side.notes[i].items.removeExpiredChecked(now: now) }
+        return side
     }
 
     private static func entries(_ side: Side) -> [UUID: Entry] {

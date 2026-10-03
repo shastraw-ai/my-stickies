@@ -16,6 +16,7 @@ no account, no Xcode.
 
 - **Checkboxes that nest** — `⇥` tucks a row under the one above it, up to eight levels deep.
   Checking a parent checks its whole subtree; a parent ticks itself once its children are done.
+- **Done items clear themselves** — a checked item is removed 3 days after it was checked.
 - **Collapse a branch** — a folded row hides its children and shows `2/5` progress instead.
 - **Always on top** — every note is a floating panel that stays above other apps, per note (`⌘T`).
 - **Transparency** — per-note opacity from 100% down to 20%, plus *turn solid when in use*, so a
@@ -27,8 +28,8 @@ no account, no Xcode.
 - **Recoverable trash** — deleting a note is undoable with **Put Back**; only permanent deletion asks.
 - **Plain JSON storage** — one `notes.json` you can read, diff, back up, or drop in a synced
   folder. No database, and nothing to sign into unless you opt in to sync.
-- **Optional Google Drive sync** — `⌘R` syncs your notes and trash with your own Drive,
-  asking which side wins only when both changed.
+- **Optional Google Drive sync** — once signed in, notes and trash sync with your own Drive
+  every 5 minutes and on quit (`⌘R` for now), merging edits made on two Macs.
 - **Keyboard-first outlining** — `⏎`, `⇥`, `⇧⇥`, `↑`/`↓`, `⌫`, and `⌘N` do the whole job.
 
 ## Install
@@ -109,10 +110,12 @@ Permanent deletion is separate and does ask: **Delete Permanently…** on a sing
 
 ## Syncing with Google Drive
 
-**File ▸ Sync with Google Drive** (`⌘R`) is a manual, one-press sync of `notes.json` and
-`trash_notes.json`. The first time, it opens your browser to sign in to Google; the app
-asks only for access to files it creates itself, so it can't see anything else in your
-Drive. The sign-in is kept in your Keychain, and later syncs need no browser.
+**File ▸ Sync with Google Drive** (`⌘R`) syncs `notes.json` and `trash_notes.json`. The
+first time, it opens your browser to sign in to Google; the app asks only for access to
+files it creates itself, so it can't see anything else in your Drive. The sign-in is kept
+in your Keychain, and from then on the app also syncs by itself at launch, every 5 minutes,
+and on quit — quietly, never opening the browser. Automatic sync is off when
+`MY_STICKIES_NOTES` points at another file.
 
 Each sync compares both files with how they were at the last sync. Whichever side changed
 wins — local edits upload, edits from another Mac download. If both changed (including the

@@ -5,11 +5,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var windows: WindowManager!
     private var notesMenu: NSMenu!
     private var formatMenu: NSMenu!
+    private var maintenanceTimer: Timer?
+    private var quitReplied = false
+
+    /// Background Drive sync is off for an alternate notes file (demo sets, screenshots,
+    /// a separate work/personal set): merging would fold it into the one Drive copy.
+    private static let autoSyncEnabled =
+        (ProcessInfo.processInfo.environment["MY_STICKIES_NOTES"] ?? "").isEmpty
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         windows = WindowManager(store: store)
         buildMenu()
         NSApp.activate(ignoringOtherApps: true)
+        startMaintenance()
 
         // Dev aid: MY_STICKIES_SNAPSHOT=/path/to/dir dumps each note window to a PNG.
         if let dir = ProcessInfo.processInfo.environment["MY_STICKIES_SNAPSHOT"] {
@@ -28,6 +36,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// At launch and every 5 minutes: drop expired checked items, then sync with Drive if
+    /// already signed in.
+    private func startMaintenance() {
+        runMaintenance()
+        maintenanceTimer = Timer.scheduledTimer(withTimeInterval: 5 * 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.runMaintenance() }
+        }
+    }
+
+    private func runMaintenance() {
+        store.removeExpiredCheckedItems()
+        guard Self.autoSyncEnabled, DriveSync.isConnected else { return }
+        Task { await DriveSync.run(store: store, interactive: false) }
+    }
+
+    /// One last sync on quit, so the other Mac sees this session's edits. Capped so a slow
+    /// network can't hold up quitting.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard Self.autoSyncEnabled, DriveSync.isConnected else { return .terminateNow }
+        Task { @MainActor in
+            await DriveSync.run(store: store, interactive: false)
+            replyToQuit()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { self.replyToQuit() }
+        return .terminateLater
+    }
+
+    private func replyToQuit() {
+        guard !quitReplied else { return }
+        quitReplied = true
+        NSApp.reply(toApplicationShouldTerminate: true)
+    }
 
     func applicationWillTerminate(_ notification: Notification) {
         store.saveNow()

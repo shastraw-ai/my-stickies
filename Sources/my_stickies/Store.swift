@@ -150,6 +150,17 @@ final class Store: ObservableObject {
         body(&notes[i])
     }
 
+    /// Drops checked items past `checkedItemLifetime` from active notes. Trashed notes are
+    /// left as they were deleted.
+    func removeExpiredCheckedItems(now: Date = Date()) {
+        var updated = notes
+        var changed = false
+        for i in updated.indices where updated[i].items.removeExpiredChecked(now: now) {
+            changed = true
+        }
+        if changed { notes = updated }
+    }
+
     @discardableResult
     func addNote() -> UUID {
         var note = Note()

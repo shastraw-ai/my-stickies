@@ -17,6 +17,10 @@ product, binary, and bundle are all `my-stickies`; don't reintroduce a second na
 - `build.sh` falls back to the newest macOS 26.x SDK when the toolchain lacks the
   `SwiftUIMacros` plugin (Command Line Tools + SDK 27, where `@State` is a macro).
   Override with `SDKROOT=…`.
+- `MY_STICKIES_NOTES` disables background Drive sync — a merge would fold that set into
+  the one Drive copy.
+- Change `Item.checked` only via `setChecked`/`refreshAncestors`; they keep `checkedAt`
+  stamped, which expiry and sync merging depend on.
 - Hierarchy is a flat `[Item]` + `depth`, never a nested tree. Subtree ops go
   through `descendantRange(of:)`; don't hand-roll depth scans.
 - Checklist rows must use `OutlineTextField`, not SwiftUI `TextField` — SwiftUI

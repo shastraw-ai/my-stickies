@@ -20,6 +20,7 @@ enum SelfTest {
         trashRoundTrip()
         driveSyncDecision()
         noteMerge()
+        checkedExpiry()
 
         if failures.isEmpty {
             print("ok — \(checks) checks passed")
@@ -292,6 +293,7 @@ enum SelfTest {
     /// Three-way note merge used when both this Mac and Drive changed since the last sync.
     private static func noteMerge() {
         typealias Side = NoteMerge.Side
+        let now = Date()
         func note(_ title: String, _ items: [String] = ["x"]) -> Note {
             Note(title: title, items: items.map { Item(text: $0) })
         }
@@ -299,7 +301,7 @@ enum SelfTest {
         // The case that motivated it: a second Mac that has never synced.
         let here = note("Groceries"), there = note("Work")
         var merged = NoteMerge.merge(base: nil, local: Side(notes: [here], trash: []),
-                                     remote: Side(notes: [there], trash: []))
+                                     remote: Side(notes: [there], trash: []), now: now)
         expect(merged.notes.map(\.id), [here.id, there.id], "first sync keeps notes from both Macs, local first")
 
         var a = note("Shared", ["one"])
@@ -309,7 +311,7 @@ enum SelfTest {
         var localEdit = a; localEdit.items[0].text = "one, edited here"
         var remoteMove = a; remoteMove.frame.origin.x += 100; remoteMove.colorIndex = 3
         merged = NoteMerge.merge(base: base, local: Side(notes: [localEdit], trash: []),
-                                 remote: Side(notes: [remoteMove], trash: []))
+                                 remote: Side(notes: [remoteMove], trash: []), now: now)
         expect(merged.notes.count, 1, "edits to different parts of one note merge into one note")
         expect(merged.notes.first?.items.first?.text, "one, edited here", "this Mac's text edit survives")
         expect(merged.notes.first?.colorIndex, 3, "Drive's color change survives")
@@ -317,13 +319,13 @@ enum SelfTest {
 
         var localMove = a; localMove.frame.origin.y += 50
         merged = NoteMerge.merge(base: base, local: Side(notes: [localMove], trash: []),
-                                 remote: Side(notes: [remoteMove], trash: []))
+                                 remote: Side(notes: [remoteMove], trash: []), now: now)
         expect(merged.notes.first?.frame, localMove.frame, "both moved the window: this Mac wins")
         expect(merged.notes.count, 1, "a window moved on both Macs isn't a text conflict")
 
         var remoteEdit = a; remoteEdit.items[0].text = "one, edited on Drive"
         merged = NoteMerge.merge(base: base, local: Side(notes: [localEdit], trash: []),
-                                 remote: Side(notes: [remoteEdit], trash: []))
+                                 remote: Side(notes: [remoteEdit], trash: []), now: now)
         expect(merged.notes.count, 2, "text edited on both sides keeps both versions")
         expect(merged.notes.first?.id, a.id, "this Mac's version keeps the original note")
         expect(merged.notes.first?.items.first?.text, "one, edited here", "and this Mac's text")
@@ -334,18 +336,18 @@ enum SelfTest {
         let b = note("Second")
         let twoNotes = Side(notes: [a, b], trash: [])
         merged = NoteMerge.merge(base: twoNotes, local: Side(notes: [localEdit, b], trash: []),
-                                 remote: Side(notes: [a], trash: []))
+                                 remote: Side(notes: [a], trash: []), now: now)
         expect(merged.notes.map(\.id), [a.id], "a note purged on Drive and untouched here stays purged")
         expect(merged.notes.first?.items.first?.text, "one, edited here", "while the local edit still lands")
 
         var bEdited = b; bEdited.title = "Second, edited"
         merged = NoteMerge.merge(base: twoNotes, local: Side(notes: [a, bEdited], trash: []),
-                                 remote: Side(notes: [remoteEdit], trash: []))
+                                 remote: Side(notes: [remoteEdit], trash: []), now: now)
         expect(merged.notes.contains { $0.title == "Second, edited" }, "a purge loses to an edit made since")
 
         var trashed = b; trashed.deletedAt = Date()
         merged = NoteMerge.merge(base: twoNotes, local: Side(notes: [localEdit], trash: [trashed]),
-                                 remote: Side(notes: [remoteEdit, b], trash: []))
+                                 remote: Side(notes: [remoteEdit, b], trash: []), now: now)
         expect(merged.trash.map(\.id), [b.id], "a note trashed here moves to the trash")
         expect(!merged.notes.contains { $0.id == b.id }, "and isn't active too")
         expect(merged.trash.first?.deletedAt != nil, "and keeps its deletion date")
@@ -353,11 +355,69 @@ enum SelfTest {
         let older = { var n = note("Old"); n.deletedAt = Date(timeIntervalSince1970: 1); return n }()
         let newer = { var n = note("New"); n.deletedAt = Date(timeIntervalSince1970: 2); return n }()
         merged = NoteMerge.merge(base: nil, local: Side(notes: [], trash: [older]),
-                                 remote: Side(notes: [], trash: [newer]))
+                                 remote: Side(notes: [], trash: [newer]), now: now)
         expect(merged.trash.map(\.title), ["New", "Old"], "a merged trash stays newest-first")
 
         let same = Side(notes: [localEdit], trash: [])
-        expect(NoteMerge.merge(base: base, local: same, remote: same), same, "identical sides merge to themselves")
+        expect(NoteMerge.merge(base: base, local: same, remote: same, now: now), same, "identical sides merge to themselves")
+    }
+
+    // MARK: Checked-item expiry
+
+    private static func checkedExpiry() {
+        let now = Date()
+        let day: TimeInterval = 24 * 60 * 60
+
+        var items = outline([(0, "parent"), (1, "a"), (1, "b"), (0, "solo")])
+        items.setChecked(true, at: 1, now: now)
+        expect(items[1].checkedAt, now, "checking stamps the time")
+        items.setChecked(true, at: 2, now: now + 1)
+        expect(items[0].checked, "a parent auto-checks when its last child does")
+        expect(items[0].checkedAt, now + 1, "and is stamped then")
+        items.setChecked(false, at: 1, now: now + 2)
+        expect(items[1].checkedAt == nil, "unchecking clears the stamp")
+        expect(items[0].checkedAt == nil, "and clears the parent's that came undone")
+        items.setChecked(true, at: 0, now: now + 3)
+        expect(items[1].checkedAt, now + 3, "checking a parent stamps its children")
+
+        let old = now - 4 * day
+        func aged(_ spec: [(Int, String, Date?)]) -> [Item] {
+            spec.map { Item(text: $0.1, checked: $0.2 != nil, depth: $0.0, checkedAt: $0.2) }
+        }
+        var list = aged([(0, "old", old), (0, "fresh", now - day), (0, "open", nil)])
+        list.append(Item(text: "legacy", checked: true))
+        expect(list.removeExpiredChecked(now: now), "something expired")
+        expect(list.map(\.text), ["fresh", "open", "legacy"],
+               "only items checked 3+ days ago go; legacy checks without a date stay")
+        expect(!list.removeExpiredChecked(now: now), "nothing left to expire reports no change")
+
+        list = aged([(0, "done", old), (1, "done child", old), (2, "done grandchild", old), (0, "next", nil)])
+        list.removeExpiredChecked(now: now)
+        expect(list.map(\.text), ["next"], "a fully expired subtree goes together")
+
+        list = aged([(0, "parent", old), (1, "old child", old), (1, "recent child", now - day)])
+        list.removeExpiredChecked(now: now)
+        expect(list.map(\.text), ["parent", "recent child"],
+               "a recently checked child keeps its parent; its expired sibling goes")
+
+        list = aged([(0, "parent", nil), (1, "old child", old), (1, "open child", nil)])
+        list.removeExpiredChecked(now: now)
+        expect(list.map(\.text), ["parent", "open child"], "an expired child under an open parent goes alone")
+
+        let json = #"[{"id":"\#(UUID())","text":"t","checked":true,"depth":0,"collapsed":false}]"#
+        let decoded = try? JSONDecoder().decode([Item].self, from: Data(json.utf8))
+        expect(decoded?.first?.checked == true && decoded?.first?.checkedAt == nil,
+               "items saved before checkedAt existed still decode")
+
+        // Both Macs expiring the same item, with an unrelated edit on one, isn't a conflict.
+        let note = Note(title: "List", items: aged([(0, "done", old), (0, "todo", nil)]))
+        var here = note; here.items.removeExpiredChecked(now: now)
+        var there = note; there.items[1].text = "todo, edited"
+        let merged = NoteMerge.merge(base: NoteMerge.Side(notes: [note], trash: []),
+                                     local: NoteMerge.Side(notes: [here], trash: []),
+                                     remote: NoteMerge.Side(notes: [there], trash: []), now: now)
+        expect(merged.notes.count, 1, "expiry on one Mac doesn't conflict with an edit on the other")
+        expect(merged.notes.first?.items.map(\.text), ["todo, edited"], "the edit lands and the expired item stays gone")
     }
 
     // MARK: Focus handoff

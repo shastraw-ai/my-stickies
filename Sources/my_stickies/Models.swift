@@ -102,6 +102,9 @@ struct Item: Codable, Identifiable, Hashable {
     var checked: Bool = false
     var depth: Int = 0
     var collapsed: Bool = false
+    /// When it was last checked; drives `removeExpiredChecked`. Optional so older files still
+    /// decode — and items checked before this existed stay nil and never expire.
+    var checkedAt: Date?
 }
 
 struct Note: Codable, Identifiable, Equatable {
@@ -142,6 +145,9 @@ struct Note: Codable, Identifiable, Equatable {
 // MARK: - Outline operations
 
 let maxDepth = 8
+
+/// Checked items are removed this long after being checked.
+let checkedItemLifetime: TimeInterval = 3 * 24 * 60 * 60
 
 extension Array where Element == Item {
     /// Indices of `index`'s descendants: the contiguous run of deeper items after it.
@@ -223,24 +229,52 @@ extension Array where Element == Item {
     }
 
     /// Toggle a box; the state cascades down to descendants and parents recompute.
-    mutating func setChecked(_ value: Bool, at index: Int) {
+    mutating func setChecked(_ value: Bool, at index: Int, now: Date = Date()) {
         guard indices.contains(index) else { return }
-        self[index].checked = value
-        for i in descendantRange(of: index) { self[i].checked = value }
-        refreshAncestors(from: index)
+        for i in index..<descendantRange(of: index).upperBound {
+            self[i].checked = value
+            self[i].checkedAt = value ? now : nil
+        }
+        refreshAncestors(from: index, now: now)
     }
 
     /// A parent is checked exactly when all of its children are.
-    mutating func refreshAncestors(from index: Int) {
+    mutating func refreshAncestors(from index: Int, now: Date = Date()) {
         var cursor = Swift.min(index, count - 1)
         while cursor >= 0 {
             guard let parent = parentIndex(of: cursor) else { break }
             let children = childIndices(of: parent)
-            if !children.isEmpty {
-                self[parent].checked = children.allSatisfy { self[$0].checked }
+            let allChecked = children.allSatisfy { self[$0].checked }
+            if !children.isEmpty, self[parent].checked != allChecked {
+                self[parent].checked = allChecked
+                self[parent].checkedAt = allChecked ? now : nil
             }
             cursor = parent
         }
+    }
+
+    /// Removes items checked more than `checkedItemLifetime` before `now`, with their
+    /// subtrees — but only when the whole subtree has expired, so an unchecked or recently
+    /// checked child keeps its parent. Returns whether anything was removed.
+    @discardableResult
+    mutating func removeExpiredChecked(now: Date) -> Bool {
+        func expired(_ item: Item) -> Bool {
+            guard item.checked, let at = item.checkedAt else { return false }
+            return now.timeIntervalSince(at) >= checkedItemLifetime
+        }
+        var removed = false
+        var i = 0
+        while i < count {
+            let subtree = i..<descendantRange(of: i).upperBound
+            if subtree.allSatisfy({ expired(self[$0]) }) {
+                removeSubrange(subtree)
+                refreshAncestors(from: i, now: now)
+                removed = true
+            } else {
+                i += 1
+            }
+        }
+        return removed
     }
 
     func childIndices(of index: Int) -> [Int] {
