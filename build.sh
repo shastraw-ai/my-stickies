@@ -14,7 +14,7 @@ OUT="build/${APP_NAME}.app"
 if [ -z "${SDKROOT:-}" ]; then
   TOOLCHAIN="$(dirname "$(dirname "$(xcrun --find swift)")")"
   if ! ls "$TOOLCHAIN"/lib/swift/host/plugins/*SwiftUIMacros* >/dev/null 2>&1; then
-    FALLBACK="$(ls -d "$(xcrun --show-sdk-path)"/../MacOSX2[0-6].*.sdk 2>/dev/null | sort -V | tail -1)"
+    FALLBACK="$(ls -d "$(xcrun --show-sdk-path)"/../MacOSX2[0-6].*.sdk 2>/dev/null | sort -V | tail -1 || true)"
     if [ -n "$FALLBACK" ]; then
       export SDKROOT="$FALLBACK"
       echo "==> No SwiftUIMacros plugin; using $(basename "$SDKROOT")"

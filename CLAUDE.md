@@ -14,6 +14,9 @@ product, binary, and bundle are all `my-stickies`; don't reintroduce a second na
 ## Rules
 - No `swift test`: XCTest needs Xcode, this machine has Command Line Tools only.
   New model-logic tests go in `SelfTest.swift`, reachable via `--self-test`.
+- `build.sh` falls back to the newest macOS 26.x SDK when the toolchain lacks the
+  `SwiftUIMacros` plugin (Command Line Tools + SDK 27, where `@State` is a macro).
+  Override with `SDKROOT=…`.
 - Hierarchy is a flat `[Item]` + `depth`, never a nested tree. Subtree ops go
   through `descendantRange(of:)`; don't hand-roll depth scans.
 - Checklist rows must use `OutlineTextField`, not SwiftUI `TextField` — SwiftUI
