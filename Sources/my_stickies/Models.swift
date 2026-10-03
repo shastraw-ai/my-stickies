@@ -104,7 +104,7 @@ struct Item: Codable, Identifiable, Hashable {
     var collapsed: Bool = false
 }
 
-struct Note: Codable, Identifiable {
+struct Note: Codable, Identifiable, Equatable {
     var id: UUID = UUID()
     var title: String = "Untitled"
     var items: [Item] = [Item()]

@@ -19,6 +19,7 @@ enum SelfTest {
         legacyDecoding()
         trashRoundTrip()
         driveSyncDecision()
+        noteMerge()
 
         if failures.isEmpty {
             print("ok — \(checks) checks passed")
@@ -286,6 +287,77 @@ enum SelfTest {
                .download, "only the Drive file changed")
         expect(SyncDecision.action(remoteExists: true, localChanged: true, remoteChanged: true),
                .conflict, "both sides changed — never silently pick a winner")
+    }
+
+    /// Three-way note merge used when both this Mac and Drive changed since the last sync.
+    private static func noteMerge() {
+        typealias Side = NoteMerge.Side
+        func note(_ title: String, _ items: [String] = ["x"]) -> Note {
+            Note(title: title, items: items.map { Item(text: $0) })
+        }
+
+        // The case that motivated it: a second Mac that has never synced.
+        let here = note("Groceries"), there = note("Work")
+        var merged = NoteMerge.merge(base: nil, local: Side(notes: [here], trash: []),
+                                     remote: Side(notes: [there], trash: []))
+        expect(merged.notes.map(\.id), [here.id, there.id], "first sync keeps notes from both Macs, local first")
+
+        var a = note("Shared", ["one"])
+        a.colorIndex = 1
+        let base = Side(notes: [a], trash: [])
+
+        var localEdit = a; localEdit.items[0].text = "one, edited here"
+        var remoteMove = a; remoteMove.frame.origin.x += 100; remoteMove.colorIndex = 3
+        merged = NoteMerge.merge(base: base, local: Side(notes: [localEdit], trash: []),
+                                 remote: Side(notes: [remoteMove], trash: []))
+        expect(merged.notes.count, 1, "edits to different parts of one note merge into one note")
+        expect(merged.notes.first?.items.first?.text, "one, edited here", "this Mac's text edit survives")
+        expect(merged.notes.first?.colorIndex, 3, "Drive's color change survives")
+        expect(merged.notes.first?.frame, remoteMove.frame, "Drive's window move survives")
+
+        var localMove = a; localMove.frame.origin.y += 50
+        merged = NoteMerge.merge(base: base, local: Side(notes: [localMove], trash: []),
+                                 remote: Side(notes: [remoteMove], trash: []))
+        expect(merged.notes.first?.frame, localMove.frame, "both moved the window: this Mac wins")
+        expect(merged.notes.count, 1, "a window moved on both Macs isn't a text conflict")
+
+        var remoteEdit = a; remoteEdit.items[0].text = "one, edited on Drive"
+        merged = NoteMerge.merge(base: base, local: Side(notes: [localEdit], trash: []),
+                                 remote: Side(notes: [remoteEdit], trash: []))
+        expect(merged.notes.count, 2, "text edited on both sides keeps both versions")
+        expect(merged.notes.first?.id, a.id, "this Mac's version keeps the original note")
+        expect(merged.notes.first?.items.first?.text, "one, edited here", "and this Mac's text")
+        expect(merged.notes.last?.title, "Shared" + NoteMerge.copySuffix, "Drive's version is a labeled copy")
+        expect(merged.notes.last?.items.first?.text, "one, edited on Drive", "the copy holds Drive's text")
+        expect(merged.notes.last?.id != a.id, "the copy gets its own id")
+
+        let b = note("Second")
+        let twoNotes = Side(notes: [a, b], trash: [])
+        merged = NoteMerge.merge(base: twoNotes, local: Side(notes: [localEdit, b], trash: []),
+                                 remote: Side(notes: [a], trash: []))
+        expect(merged.notes.map(\.id), [a.id], "a note purged on Drive and untouched here stays purged")
+        expect(merged.notes.first?.items.first?.text, "one, edited here", "while the local edit still lands")
+
+        var bEdited = b; bEdited.title = "Second, edited"
+        merged = NoteMerge.merge(base: twoNotes, local: Side(notes: [a, bEdited], trash: []),
+                                 remote: Side(notes: [remoteEdit], trash: []))
+        expect(merged.notes.contains { $0.title == "Second, edited" }, "a purge loses to an edit made since")
+
+        var trashed = b; trashed.deletedAt = Date()
+        merged = NoteMerge.merge(base: twoNotes, local: Side(notes: [localEdit], trash: [trashed]),
+                                 remote: Side(notes: [remoteEdit, b], trash: []))
+        expect(merged.trash.map(\.id), [b.id], "a note trashed here moves to the trash")
+        expect(!merged.notes.contains { $0.id == b.id }, "and isn't active too")
+        expect(merged.trash.first?.deletedAt != nil, "and keeps its deletion date")
+
+        let older = { var n = note("Old"); n.deletedAt = Date(timeIntervalSince1970: 1); return n }()
+        let newer = { var n = note("New"); n.deletedAt = Date(timeIntervalSince1970: 2); return n }()
+        merged = NoteMerge.merge(base: nil, local: Side(notes: [], trash: [older]),
+                                 remote: Side(notes: [], trash: [newer]))
+        expect(merged.trash.map(\.title), ["New", "Old"], "a merged trash stays newest-first")
+
+        let same = Side(notes: [localEdit], trash: [])
+        expect(NoteMerge.merge(base: base, local: same, remote: same), same, "identical sides merge to themselves")
     }
 
     // MARK: Focus handoff

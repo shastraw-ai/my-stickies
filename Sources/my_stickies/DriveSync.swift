@@ -7,8 +7,9 @@ import Darwin
 /// itself). No Google SDK: OAuth2 PKCE via a loopback redirect (Network.framework) and the
 /// Drive v3 REST API over URLSession, matching the "no deps" rule.
 ///
-/// Conflict rule: if a file changed on both sides since the last sync, ask which wins.
-/// Otherwise the changed side wins silently — that's what "press refresh" should feel like.
+/// Sync rule: if only one side changed since the last sync, it wins silently — that's what
+/// "press refresh" should feel like. If both changed, notes are merged one by one against
+/// the copy both sides last agreed on (`NoteMerge`), so neither Mac's notes are lost.
 enum DriveSync {
     /// Registered once in Google Cloud Console as a "Desktop app" OAuth client. The secret
     /// isn't confidential for this client type — Google's own docs say so, since an installed
@@ -86,11 +87,10 @@ enum DriveSync {
         let trashPlan = try await plan(displayName: "Trash", fileName: "trash_notes.json",
                                         localURL: Store.trashURL, record: state.trash, accessToken: accessToken)
 
-        var resolution: ConflictResolution = .auto
-        let conflicting = [notesPlan, trashPlan].filter { $0.action == .conflict }
-        if !conflicting.isEmpty {
-            guard let chosen = presentConflict(names: conflicting.map(\.displayName)) else { return }
-            resolution = chosen
+        // Merged as a pair: a note moving to the trash leaves one file and enters the other.
+        if notesPlan.action == .conflict || trashPlan.action == .conflict {
+            try await merge(notesPlan, trashPlan, store: store, accessToken: accessToken)
+            return
         }
 
         let files: [(SyncPlan, URL, WritableKeyPath<SyncState, SyncRecord?>)] = [
@@ -98,7 +98,7 @@ enum DriveSync {
             (trashPlan, Store.trashURL, \.trash),
         ]
         for (plan, localURL, recordPath) in files {
-            guard let applied = try await apply(plan, resolution: resolution, accessToken: accessToken) else { continue }
+            guard let applied = try await apply(plan, accessToken: accessToken) else { continue }
             if let data = applied.downloaded {
                 // No await from here to the reload, so an edit made while the download was in
                 // flight is either caught by the hash check or can't happen at all.
@@ -113,6 +113,66 @@ enum DriveSync {
             // Saved per file: if the next file fails, this one mustn't look changed on both sides.
             state[keyPath: recordPath] = applied.record
             SyncStateStore.save(state)
+            SyncBase.save(applied.downloaded ?? plan.localData, for: plan.fileName)
+        }
+    }
+
+    /// Both sides changed since the last sync: merge note by note, then make this Mac and
+    /// Drive both hold the result.
+    @MainActor
+    private static func merge(_ notesPlan: SyncPlan, _ trashPlan: SyncPlan, store: Store,
+                              accessToken: String) async throws {
+        var remoteData: [Data?] = []
+        for plan in [notesPlan, trashPlan] {
+            guard let remote = plan.remoteFile else { remoteData.append(nil); continue }
+            remoteData.append(try await step("download \(plan.displayName) from Drive") {
+                try await downloadFile(id: remote.id, accessToken: accessToken)
+            })
+        }
+
+        func decoded(_ data: Data?, _ what: String) throws -> [Note] {
+            guard let data, !data.isEmpty else { return [] }
+            do {
+                return try Store.decode(data)
+            } catch {
+                throw DriveSyncError.message("Couldn't read \(what) to merge it: \(error.localizedDescription)")
+            }
+        }
+        let local = NoteMerge.Side(notes: try decoded(notesPlan.localData, "this Mac's notes"),
+                                   trash: try decoded(trashPlan.localData, "this Mac's trash"))
+        let drive = NoteMerge.Side(notes: try decoded(remoteData[0], "the notes on Drive"),
+                                   trash: try decoded(remoteData[1], "the trash on Drive"))
+        var base: NoteMerge.Side?
+        if let notes = SyncBase.load(notesPlan.fileName), let trash = SyncBase.load(trashPlan.fileName) {
+            base = try? NoteMerge.Side(notes: Store.decode(notes), trash: Store.decode(trash))
+        }
+        let merged = NoteMerge.merge(base: base, local: local, remote: drive)
+        let mergedNotes = try Store.encode(merged.notes)
+        let mergedTrash = try Store.encode(merged.trash)
+
+        // As in `sync`: no await from the hash check to the reload.
+        store.saveNow()
+        for (plan, localURL) in [(notesPlan, Store.fileURL), (trashPlan, Store.trashURL)] {
+            let onDisk = (try? Data(contentsOf: localURL)) ?? Data()
+            guard sha256Hex(onDisk) == plan.localHash else {
+                throw DriveSyncError.message("\(plan.displayName) changed on this Mac during the sync. Sync again.")
+            }
+        }
+        try mergedNotes.write(to: Store.fileURL, options: .atomic)
+        try mergedTrash.write(to: Store.trashURL, options: .atomic)
+        store.reloadFromDisk()
+
+        var state = SyncStateStore.load()
+        let targets: [(SyncPlan, Data, WritableKeyPath<SyncState, SyncRecord?>)] = [
+            (notesPlan, mergedNotes, \.notes),
+            (trashPlan, mergedTrash, \.trash),
+        ]
+        for (plan, data, recordPath) in targets {
+            let uploaded = try await upload(plan, data: data, accessToken: accessToken)
+            state[keyPath: recordPath] = SyncRecord(fileId: uploaded.id, localHash: sha256Hex(data),
+                                                    remoteMD5: uploaded.md5Checksum ?? "")
+            SyncStateStore.save(state)
+            SyncBase.save(data, for: plan.fileName)
         }
     }
 
@@ -135,31 +195,15 @@ enum DriveSync {
 
     /// Never writes local files itself — a download is handed back for `sync` to write, so
     /// the write happens on the main actor right next to the Store reload.
-    private static func apply(_ plan: SyncPlan, resolution: ConflictResolution,
-                               accessToken: String) async throws -> AppliedSync? {
-        var action = plan.action
-        if action == .conflict {
-            switch resolution {
-            case .keepLocal: action = .upload
-            case .keepDrive: action = .download
-            case .auto: return nil
-            }
-        }
-
-        switch action {
+    private static func apply(_ plan: SyncPlan, accessToken: String) async throws -> AppliedSync? {
+        switch plan.action {
         case .none:
             guard let remote = plan.remoteFile else { return nil }
             return AppliedSync(record: SyncRecord(fileId: remote.id, localHash: plan.localHash,
                                                   remoteMD5: remote.md5Checksum ?? ""))
 
         case .upload:
-            let uploaded: DriveFile = try await step("upload \(plan.displayName) to Drive") {
-                if let remote = plan.remoteFile {
-                    return try await updateFile(id: remote.id, data: plan.localData, accessToken: accessToken)
-                } else {
-                    return try await uploadNewFile(named: plan.fileName, data: plan.localData, accessToken: accessToken)
-                }
-            }
+            let uploaded = try await upload(plan, data: plan.localData, accessToken: accessToken)
             return AppliedSync(record: SyncRecord(fileId: uploaded.id, localHash: plan.localHash,
                                                   remoteMD5: uploaded.md5Checksum ?? ""))
 
@@ -173,7 +217,16 @@ enum DriveSync {
                                downloaded: data)
 
         case .conflict:
-            return nil
+            return nil // handled by `merge`
+        }
+    }
+
+    private static func upload(_ plan: SyncPlan, data: Data, accessToken: String) async throws -> DriveFile {
+        try await step("upload \(plan.displayName) to Drive") {
+            if let remote = plan.remoteFile {
+                return try await updateFile(id: remote.id, data: data, accessToken: accessToken)
+            }
+            return try await uploadNewFile(named: plan.fileName, data: data, accessToken: accessToken)
         }
     }
 
@@ -182,24 +235,6 @@ enum DriveSync {
     }
 
     // MARK: Alerts
-
-    @MainActor
-    private static func presentConflict(names: [String]) -> ConflictResolution? {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Google Drive Sync Conflict"
-        alert.informativeText = "\(names.joined(separator: " and ")) changed on both this Mac and "
-            + "Google Drive since the last sync. Which should win?"
-        alert.addButton(withTitle: "Keep This Mac")
-        alert.addButton(withTitle: "Keep Google Drive")
-        alert.addButton(withTitle: "Cancel")
-        NSApp.activate(ignoringOtherApps: true)
-        switch alert.runModal() {
-        case .alertFirstButtonReturn: return .keepLocal
-        case .alertSecondButtonReturn: return .keepDrive
-        default: return nil
-        }
-    }
 
     @MainActor
     private static func presentError(_ error: Error) {
@@ -544,6 +579,107 @@ enum SyncDecision {
     }
 }
 
+/// Three-way merge of notes + trash, keyed by note id, against `base`: the files both sides
+/// agreed on at the last sync. Each field group takes whichever side changed it; when both
+/// did, this Mac wins — except a note's text, where both edits are kept: Drive's becomes a
+/// separate "conflicted copy" note rather than being thrown away.
+enum NoteMerge {
+    struct Side: Equatable {
+        var notes: [Note]
+        var trash: [Note]
+    }
+
+    static let copySuffix = " (conflicted copy)"
+
+    private struct Entry: Equatable {
+        var note: Note
+        var inTrash: Bool
+    }
+
+    /// `base` is nil when this Mac has never synced (or synced before merging existed). Then
+    /// nothing counts as deleted, and notes on both sides with different text are both kept.
+    static func merge(base: Side?, local: Side, remote: Side) -> Side {
+        let b = base.map(entries) ?? [:], l = entries(local), r = entries(remote)
+
+        var merged: [Entry] = []
+        var copies: [Note] = []
+        var seen = Set<UUID>()
+        for note in local.notes + local.trash + remote.notes + remote.trash where seen.insert(note.id).inserted {
+            let (entry, copy) = mergeOne(base: b[note.id], local: l[note.id], remote: r[note.id])
+            if let entry { merged.append(entry) }
+            if let copy { copies.append(copy) }
+        }
+
+        // Trash stays newest-first; the index tiebreak keeps the sort stable.
+        let trash = merged.enumerated().filter { $0.element.inTrash }
+            .sorted { a, c in
+                let da = a.element.note.deletedAt ?? .distantPast, dc = c.element.note.deletedAt ?? .distantPast
+                return da != dc ? da > dc : a.offset < c.offset
+            }
+            .map(\.element.note)
+        return Side(notes: merged.filter { !$0.inTrash }.map(\.note) + copies, trash: trash)
+    }
+
+    private static func entries(_ side: Side) -> [UUID: Entry] {
+        var out: [UUID: Entry] = [:]
+        for note in side.notes { out[note.id] = Entry(note: note, inTrash: false) }
+        for note in side.trash { out[note.id] = Entry(note: note, inTrash: true) }
+        return out
+    }
+
+    private static func mergeOne(base b: Entry?, local l: Entry?, remote r: Entry?) -> (Entry?, Note?) {
+        switch (l, r) {
+        case (nil, nil):
+            return (nil, nil)
+        case (let only?, nil), (nil, let only?):
+            // Missing on one side: purged there — unless the other side has changed it since.
+            return (only == b ? nil : only, nil)
+        case (let l?, let r?):
+            if l == r { return (l, nil) }
+            var m = l
+            func adopt<T: Equatable>(_ path: WritableKeyPath<Note, T>) {
+                if let b, l.note[keyPath: path] == b.note[keyPath: path] {
+                    m.note[keyPath: path] = r.note[keyPath: path]
+                }
+            }
+            adopt(\.frame)
+            adopt(\.isHidden)
+            adopt(\.colorIndex)
+            adopt(\.fontStyle)
+            adopt(\.fontSize)
+            adopt(\.paperOpacity)
+            adopt(\.opaqueOnHover)
+            adopt(\.alwaysOnTop)
+            if let b, l.inTrash == b.inTrash {
+                m.inTrash = r.inTrash
+                m.note.deletedAt = r.note.deletedAt
+            }
+
+            if let b, sameText(l.note, b.note) {
+                m.note.title = r.note.title
+                m.note.items = r.note.items
+            } else if !sameText(l.note, r.note), b.map({ !sameText(r.note, $0.note) }) ?? true {
+                return (m, conflictedCopy(of: r.note))
+            }
+            return (m, nil)
+        }
+    }
+
+    private static func sameText(_ a: Note, _ b: Note) -> Bool {
+        a.title == b.title && a.items == b.items
+    }
+
+    private static func conflictedCopy(of note: Note) -> Note {
+        var copy = note
+        copy.id = UUID()
+        copy.items = note.items.map { var item = $0; item.id = UUID(); return item }
+        copy.title = note.title + copySuffix
+        copy.frame = note.frame.offsetBy(dx: 24, dy: -24)
+        copy.deletedAt = nil
+        return copy
+    }
+}
+
 // MARK: - Wire types
 
 private struct SyncPlan {
@@ -554,8 +690,6 @@ private struct SyncPlan {
     let localHash: String
     let remoteFile: DriveFile?
 }
-
-private enum ConflictResolution { case keepLocal, keepDrive, auto }
 
 private struct AppliedSync {
     let record: SyncRecord
@@ -614,6 +748,21 @@ private enum SyncStateStore {
     static func save(_ state: SyncState) {
         guard let data = try? JSONEncoder().encode(state) else { return }
         try? data.write(to: url, options: .atomic)
+    }
+}
+
+/// The exact files both sides held after the last sync: the base `NoteMerge` diffs against.
+private enum SyncBase {
+    static func url(_ fileName: String) -> URL {
+        Store.fileURL.deletingLastPathComponent().appendingPathComponent("drive_sync_base_\(fileName)")
+    }
+
+    static func load(_ fileName: String) -> Data? {
+        try? Data(contentsOf: url(fileName))
+    }
+
+    static func save(_ data: Data, for fileName: String) {
+        try? data.write(to: url(fileName), options: .atomic)
     }
 }
 

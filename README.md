@@ -115,9 +115,11 @@ asks only for access to files it creates itself, so it can't see anything else i
 Drive. The sign-in is kept in your Keychain, and later syncs need no browser.
 
 Each sync compares both files with how they were at the last sync. Whichever side changed
-wins — local edits upload, edits from another Mac download. If a file changed on both,
-you're asked whether to keep this Mac's copy or Drive's. **File ▸ Disconnect Google
-Drive** forgets the sign-in.
+wins — local edits upload, edits from another Mac download. If both changed (including the
+first sync from a second Mac), the notes are merged one by one: notes from either side are
+kept, and changes to different notes or different settings of a note combine. If the same
+note's text was edited on both, this Mac's version stays and Drive's is kept beside it as
+"… (conflicted copy)". **File ▸ Disconnect Google Drive** forgets the sign-in.
 
 ## Where your notes live
 
@@ -125,6 +127,7 @@ Drive** forgets the sign-in.
 ~/Library/Application Support/my-stickies/notes.json        active notes
 ~/Library/Application Support/my-stickies/trash_notes.json  deleted notes
 ~/Library/Application Support/my-stickies/drive_sync_state.json  last Drive sync (if used)
+~/Library/Application Support/my-stickies/drive_sync_base_*.json  last-synced copies, for merging
 ```
 
 Both are plain JSON arrays — one entry per note, holding its title, items, colour,

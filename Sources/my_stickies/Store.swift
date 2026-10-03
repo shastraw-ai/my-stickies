@@ -75,10 +75,8 @@ final class Store: ObservableObject {
 
     private static func read(_ url: URL) -> [Note]? {
         guard let data = try? Data(contentsOf: url) else { return nil }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
         do {
-            return try decoder.decode([Note].self, from: data)
+            return try decode(data)
         } catch {
             // Don't clobber a file we failed to parse — move it aside first.
             let backup = url.deletingPathExtension()
@@ -115,13 +113,24 @@ final class Store: ObservableObject {
         if trashDirty, Store.write(trash, to: Store.trashURL) { trashDirty = false }
     }
 
-    @discardableResult
-    private static func write(_ notes: [Note], to url: URL) -> Bool {
+    /// The on-disk format of notes.json / trash_notes.json, shared with DriveSync's merge.
+    static func decode(_ data: Data) throws -> [Note] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode([Note].self, from: data)
+    }
+
+    static func encode(_ notes: [Note]) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(notes)
+    }
+
+    @discardableResult
+    private static func write(_ notes: [Note], to url: URL) -> Bool {
         do {
-            try encoder.encode(notes).write(to: url, options: .atomic)
+            try encode(notes).write(to: url, options: .atomic)
             return true
         } catch {
             NSLog("my-stickies: saving \(url.lastPathComponent) failed — \(error)")
