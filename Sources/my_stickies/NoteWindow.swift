@@ -34,6 +34,15 @@ final class NotePanel: NSPanel {
         setFrame(frame, display: false)
     }
 
+    /// Chips go untitled: at 26pt the ~28pt transparent title bar covered the whole chip,
+    /// swallowing clicks and pushing its content below the title bar's safe area.
+    func setTitled(_ titled: Bool) {
+        if titled { styleMask.insert(.titled) } else { styleMask.remove(.titled) }
+        // Toggling .titled can rebuild the standard buttons, so re-hide them every time.
+        standardWindowButton(.miniaturizeButton)?.isHidden = true
+        standardWindowButton(.zoomButton)?.isHidden = true
+    }
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 }
@@ -126,6 +135,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
     /// (swap content, then resize) left a stale, unclickable ghost of the old window behind
     /// after a big resize (e.g. a full note collapsing down to a 26pt chip).
     private func installFullContent(on panel: NotePanel, id: UUID) {
+        panel.setTitled(true)
         let host = NSHostingView(rootView: NoteView(store: store, noteID: id))
         host.autoresizingMask = [.width, .height]
         panel.contentView = host
@@ -142,6 +152,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
         // Without this, NSHostingView shrink-wraps to the chip text's tiny intrinsic size
         // instead of honoring the frame the window assigns it, leaving most of the chip blank.
         host.sizingOptions = []
+        panel.setTitled(false)
         panel.contentView = host
         panel.styleMask.remove(.resizable)
         panel.standardWindowButton(.closeButton)?.isHidden = true
