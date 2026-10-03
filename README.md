@@ -22,9 +22,13 @@ no account, no Xcode.
   note parked at 30% goes fully readable the moment you point at it and fades back after.
 - **Per-note color, font, and size** — seven palettes including a dark one, four font styles, and
   10–26pt, reachable from the note header, a right-click, or the Format menu.
+- **Minimize all** — `⇧⌘N` shrinks every note to a small title chip stacked in the
+  bottom-right corner; click a chip to open that note back where it was.
 - **Recoverable trash** — deleting a note is undoable with **Put Back**; only permanent deletion asks.
 - **Plain JSON storage** — one `notes.json` you can read, diff, back up, or drop in a synced
-  folder. No database, no cloud, nothing to sign into.
+  folder. No database, and nothing to sign into unless you opt in to sync.
+- **Optional Google Drive sync** — `⌘R` syncs your notes and trash with your own Drive,
+  asking which side wins only when both changed.
 - **Keyboard-first outlining** — `⏎`, `⇥`, `⇧⇥`, `↑`/`↓`, `⌫`, and `⌘N` do the whole job.
 
 ## Install
@@ -53,6 +57,8 @@ Each note is a window with a title and a checklist. Type in a row and use:
 | `⌘N` | New note |
 | `⌘W` | Close the note (keeps it — reopen from the Notes menu) |
 | `⌘0` | Show every note again |
+| `⇧⌘N` | Minimize every note to a title chip |
+| `⌘R` | Sync with Google Drive |
 
 Click a checkbox to strike a row through. Checking a parent checks everything under
 it; a parent checks itself once all of its children are done. Rows with children get a
@@ -101,11 +107,24 @@ every checkbox intact.
 Permanent deletion is separate and does ask: **Delete Permanently…** on a single note, or
 **Empty Trash…** for everything. Neither can be undone.
 
+## Syncing with Google Drive
+
+**File ▸ Sync with Google Drive** (`⌘R`) is a manual, one-press sync of `notes.json` and
+`trash_notes.json`. The first time, it opens your browser to sign in to Google; the app
+asks only for access to files it creates itself, so it can't see anything else in your
+Drive. The sign-in is kept in your Keychain, and later syncs need no browser.
+
+Each sync compares both files with how they were at the last sync. Whichever side changed
+wins — local edits upload, edits from another Mac download. If a file changed on both,
+you're asked whether to keep this Mac's copy or Drive's. **File ▸ Disconnect Google
+Drive** forgets the sign-in.
+
 ## Where your notes live
 
 ```
 ~/Library/Application Support/my-stickies/notes.json        active notes
 ~/Library/Application Support/my-stickies/trash_notes.json  deleted notes
+~/Library/Application Support/my-stickies/drive_sync_state.json  last Drive sync (if used)
 ```
 
 Both are plain JSON arrays — one entry per note, holding its title, items, colour,
@@ -143,7 +162,8 @@ checking rendering without screen-recording permission.
 | `NoteWindow.swift` | The floating `NSPanel` and the panel↔store sync |
 | `NoteView.swift` | SwiftUI note UI: header, rows, appearance popover |
 | `OutlineTextField.swift` | `NSTextField` wrapper for ⇥/⏎/⌫ handling and strikethrough |
-| `SelfTest.swift` | Assertions for the outline logic |
+| `DriveSync.swift` | Google Drive sync: OAuth sign-in, Drive REST, the sync rule |
+| `SelfTest.swift` | Assertions for the outline and sync logic |
 | `main.swift` | App delegate and menu bar |
 
 Hierarchy is stored as a **flat array plus a `depth` field**, not a nested tree. Indent,
